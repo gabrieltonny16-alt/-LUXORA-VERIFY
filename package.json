@@ -1,0 +1,17 @@
+{
+  "name": "luxora-verify",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Provider-independent OTP verification service",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
