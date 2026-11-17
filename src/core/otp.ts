@@ -82,6 +82,10 @@ export async function checkOtp(
     return { ok: false, reason: "invalid_code" };
   }
 
+  if (!/^[0-9a-f]{64}$/i.test(challenge.codeHmacHex)) {
+    return { ok: false, reason: "invalid_code" };
+  }
+
   const candidate = hexToBytes(await hashOtp(submittedCode, pepper));
   const expected = hexToBytes(challenge.codeHmacHex);
   return constantTimeEqual(candidate, expected)
