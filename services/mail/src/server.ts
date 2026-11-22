@@ -32,7 +32,7 @@ function loadEnv(): MailEnv {
     QUEUE_ENCRYPTION_KEY: queueKey, SMTP_HOST: required("SMTP_HOST"), SMTP_PORT: smtpPort,
     SMTP_SECURE: process.env.SMTP_SECURE === "true", SMTP_USER: required("SMTP_USER"),
     SMTP_PASSWORD: required("SMTP_PASSWORD"), MAIL_FROM: required("MAIL_FROM"),
-    MAIL_FROM_NAME: process.env.MAIL_FROM_NAME?.trim() || "LUXORA VERIFY",
+    MAIL_FROM_NAME: process.env.MAIL_FROM_NAME?.trim() || "LUXORA VERIFY", BOUNCE_ADDRESS: required("BOUNCE_ADDRESS"),
   };
 }
 function readBody(request: IncomingMessage): Promise<unknown> {
@@ -109,6 +109,21 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
     }
     let payload: unknown;
     try { payload = await readBody(request); } catch { sendJson(response, 400, { error: "invalid_request" }); return; }
+    if (isMtaEvent) {
+      if (typeof payload !== "object" || payload === null || Array.isArray(payload)) { sendJson(response, 400, { error: "invalid_event" }); return; }
+      const item = payload as Record<string, unknown>;
+      if (typeof item.deliveryId !== "string" || !/^[a-f0-9]{32}$/i.test(item.deliveryId) || !validDeliveryEvent(item.event)) {
+        sendJson(response, 400, { error: "invalid_event" }); return;
+      }
+      try {
+        const result = queue.recordMtaDeliveryEvent(item.deliveryId, item.event);
+        sendJson(response, 202, { accepted: true, duplicate: result.duplicate, suppressed: result.suppressed });
+      } catch (error) {
+        if (error instanceof UnknownDeliveryEventError) { sendJson(response, 409, { error: "unknown_or_mismatched_delivery" }); return; }
+        sendJson(response, 503, { error: "event_processing_failed" });
+      }
+      return;
+    }
     if (isEvent) {
       if (!validDeliveryEvent(payload)) { sendJson(response, 400, { error: "invalid_event" }); return; }
       const result = queue.recordDeliveryEvent(payload);
