@@ -17,6 +17,9 @@
   MTA event intake.
 - Tests for queue persistence, idempotency, event authentication, DSN permanent/temporary
   classification, unsupported report handling, delivery-ID/recipient matching, and suppression.
+- A local SMTP integration harness that exercises the real delivery worker, RFC 3461 DSN
+  envelope parameters, RFC 3464 bounce parsing, authenticated MTA event intake, replay handling,
+  recipient mismatch rejection, and hard-bounce suppression without external network delivery.
 - Private LUXORA MAIL gateway Worker with separate gateway/origin credentials, strict
   HTTPS-origin allowlisting, request validation, redirect refusal, and mandatory Cloudflare
   Access Service Auth credentials.
@@ -31,8 +34,10 @@ passed on commit `6c446d5452cc2d1515262b3137b96d7ecdf9670d`:
 - LUXORA MAIL tests, including DSN parser and MTA correlation tests: passed.
 - LUXORA MAIL production build: passed.
 
-These are repository checks only. They do not prove a live SMTP host, DNS configuration,
-Postfix routing, or successful real-world delivery.
+These are repository checks only. A loopback SMTP simulator is now included in the LUXORA MAIL
+suite; its new integration test must pass in CI before that test is considered verified. Neither
+the earlier run nor the simulator proves a live SMTP host, DNS configuration, Postfix routing,
+or successful real-world delivery.
 
 ## Not yet operational
 - The MTA DSN receiver is not connected to a real Postfix host. SMTP DSN extension support,
