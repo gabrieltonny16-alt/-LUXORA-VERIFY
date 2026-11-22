@@ -26,7 +26,7 @@ export async function parseDeliveryStatusReport(raw: Buffer | string): Promise<P
   if (rawBuffer.length === 0 || rawBuffer.length > 256 * 1024) throw new Error("DSN message size is invalid");
   const parsed = await simpleParser(rawBuffer, { skipHtml: true, skipTextToHtml: true });
   const reports = parsed.attachments.filter(part => part.contentType.toLowerCase() === "message/delivery-status");
-  if (reports.length !== 1) return null;
+  if (reports.length !== 1 || !reports[0]) return null;
   const reportText = reports[0].content.toString("utf8");
   const blocks = reportText.split(/\r?\n\s*\r?\n/).map(block => block.trim()).filter(Boolean);
   if (blocks.length < 2) return null;
@@ -34,7 +34,7 @@ export async function parseDeliveryStatusReport(raw: Buffer | string): Promise<P
     .find(value => value !== undefined)?.replace(/^<|>$/g, "").trim();
   if (!deliveryId || !/^[a-f0-9]{32}$/i.test(deliveryId)) return null;
   const recipients = blocks.map(parseFields).filter(fields => fields.has("final-recipient"));
-  if (recipients.length !== 1) return null;
+  if (recipients.length !== 1 || !recipients[0]) return null;
   const recipientFields = recipients[0];
   const recipient = addressFromRecipient(recipientFields.get("final-recipient"));
   if (!recipient) return null;
