@@ -10,7 +10,7 @@ const env: MailEnv = {
   PORT: 8788, INTERNAL_SERVICE_TOKEN: token, EVENT_INGEST_TOKEN: eventToken,
   QUEUE_DB_PATH: ":memory:", QUEUE_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
   SMTP_HOST: "localhost", SMTP_PORT: 587, SMTP_SECURE: false, SMTP_USER: "test",
-  SMTP_PASSWORD: "test", MAIL_FROM: "verify@example.test", MAIL_FROM_NAME: "LUXORA VERIFY",
+  SMTP_PASSWORD: "test", MAIL_FROM: "verify@example.test", MAIL_FROM_NAME: "LUXORA VERIFY", BOUNCE_ADDRESS: "bounces@example.test",
 };
 const payload = { destination: "person@example.com", code: "123456", purpose: "sign_up" as const };
 
@@ -88,5 +88,29 @@ test("delivery event endpoint requires its own token and validates payloads", as
     });
     assert.equal(denied.status, 409);
     assert.deepEqual(await denied.json(), { error: "recipient_suppressed" });
+  });
+});
+
+test("MTA event endpoint correlates delivery ID and recipient before suppression", async () => {
+  await withServer(async baseUrl => {
+    const queuePayload = { destination: "person@example.com", code: "123456", purpose: "sign_up" as const };
+    const accepted = await fetch(`${baseUrl}/v1/deliveries`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "idempotency-key": "challenge-mta-dsn-0001" },
+      body: JSON.stringify(queuePayload),
+    });
+    const delivery = await accepted.json() as { delivery_id: string };
+    const event = { eventId: "a".repeat(64), type: "hard_bounce", recipient: "person@example.com" };
+    const wrongRecipient = await fetch(`${baseUrl}/v1/mta-events`, {
+      method: "POST", headers: { authorization: `Bearer ${eventToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ deliveryId: delivery.delivery_id, event: { ...event, recipient: "attacker@example.com" } }),
+    });
+    assert.equal(wrongRecipient.status, 409);
+    const acceptedEvent = await fetch(`${baseUrl}/v1/mta-events`, {
+      method: "POST", headers: { authorization: `Bearer ${eventToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ deliveryId: delivery.delivery_id, event }),
+    });
+    assert.equal(acceptedEvent.status, 202);
+    assert.deepEqual(await acceptedEvent.json(), { accepted: true, duplicate: false, suppressed: true });
   });
 });
