@@ -46,7 +46,7 @@ routing or delivery to external inboxes.
 - A LUXORA-operated production Postfix host is not provisioned. The CI Postfix instance is
   temporary, isolated, and loopback-only; no production mail routing or Postfix pipe transport
   has been enabled.
-- Spam-complaint ARF ingestion, an operator dashboard, and manual dead-letter replay are not implemented.
+- ARF parsing and authenticated local complaint intake are implemented and covered by tests,\n  but no provider-specific feedback-loop source authentication or production Postfix routing\n  is configured. The complaint feed is not enabled for production. An operator dashboard and\n  manual dead-letter replay are not implemented.
 - No sender domain, SPF, DKIM, DMARC, PTR/reverse DNS, public TLS configuration, or delivery reputation
   has been established.
 - Gateway source/configuration has not been deployed; no tunnel or Access Service Auth policy exists.
@@ -58,7 +58,7 @@ routing or delivery to external inboxes.
 
 ## Next engineering gates
 1. Correct delivery-state semantics so queue acceptance is not recorded as final inbox delivery.
-2. Implement a separate authenticated ARF complaint receiver and operational suppression review.
+2. Configure and validate a trusted provider-specific ARF feedback-loop source before routing\n   reports to the local receiver; add operator review and safe suppression release controls.
 3. Add operator visibility and safe dead-letter review/replay controls.
 4. Connect the DSN receiver to a LUXORA-operated Postfix host and prove DSN support using controlled test addresses.
 5. Provision the mail host, Cloudflare Tunnel, and Access Service Auth only after explicit approval.
