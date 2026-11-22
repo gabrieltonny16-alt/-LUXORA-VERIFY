@@ -59,7 +59,7 @@ test("authenticated ARF intake records a complaint, suppresses the recipient, an
   const queue = new MailQueue(":memory:", queueKey);
   const token = "arf-integration-event-token-at-least-32-bytes";
   const env: MailEnv = {
-    PORT: 0, INTERNAL_SERVICE_TOKEN: "arf-integration-internal-token-32-bytes",
+    PORT: 0, INTERNAL_SERVICE_TOKEN: "arf-integration-internal-token-32-bytes",\n    ADMIN_TOKEN: "arf-integration-admin-token-at-least-32-bytes",
     EVENT_INGEST_TOKEN: token, QUEUE_DB_PATH: ":memory:", QUEUE_ENCRYPTION_KEY: queueKey,
     SMTP_HOST: "127.0.0.1", SMTP_PORT: 2525, SMTP_SECURE: false, SMTP_USER: "",
     SMTP_PASSWORD: "", MAIL_FROM: "no-reply@luxora.test", MAIL_FROM_NAME: "LUXORA VERIFY",
