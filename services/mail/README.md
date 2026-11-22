@@ -99,14 +99,14 @@ need a separate authenticated ARF/feedback-loop parser and are not inferred from
 - Replayed event IDs are deduplicated. `GET /v1/suppressions` returns aggregate counts
   only, never recipient addresses.
 
-## Endpoints
+\n## ARF complaint receiver\n\nThe compiled `dist/arf-receiver.js` command reads one RFC 5965\n`multipart/report; report-type=feedback-report` message from standard input. It accepts\nonly a single-recipient report whose `Feedback-Type` is `abuse`, `fraud`, or `virus`,\nthen derives a stable event ID from the raw report and posts a complaint event to the\nloopback-only `/v1/arf-events` endpoint using the separate `EVENT_INGEST_TOKEN`.\nRun it with `npm run receive-arf` after building. The optional\n`MAIL_ARF_EVENT_URL` must remain a loopback URL ending in `/v1/arf-events`.\n\n**Trust boundary:** ARF is a report format, not proof that the reporter or feedback-loop\nsource is authentic. The parser validates structure; it does not verify DKIM signatures,\nprovider identity, or the source IP. The Postfix/mail-host configuration must route only\nreports received through a separately verified, trusted feedback-loop source to this\nreceiver. Do not pipe arbitrary inbound mail to it or expose the endpoint publicly.\nUntil provider-specific source authentication is configured and tested, treat ARF intake\nas an isolated parser/integration capability, not an enabled production complaint feed.\n\nThe endpoint requires `EVENT_INGEST_TOKEN`, accepts complaint events only, deduplicates\nreplays, and applies the existing HMAC-fingerprint suppression rules. It stores no raw\nrecipient address in the suppression table.\n\n## Endpoints
 
 - `GET /health`: process health.
 - `GET /v1/queue`: authenticated queue counters (queued, processing, sent, dead).
 - `GET /v1/suppressions`: authenticated aggregate suppression/event counters.
 - `POST /v1/deliveries`: authenticated, idempotent queue submission.
 - `POST /v1/events`: authenticated event intake for trusted internal adapters.
-- `POST /v1/mta-events`: authenticated DSN intake with delivery-ID/recipient matching.
+- `POST /v1/mta-events`: authenticated DSN intake with delivery-ID/recipient matching.\n- `POST /v1/arf-events`: private authenticated complaint intake; requires a trusted upstream feedback-loop route.
 
 The service reports durable queue acceptance to LUXORA VERIFY (the API audit label
 `sent` means accepted by the internal delivery queue, not confirmed inbox delivery).
