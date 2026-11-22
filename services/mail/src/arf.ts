@@ -67,7 +67,8 @@ export async function parseAbuseFeedbackReport(raw: Buffer | string): Promise<Pa
   const get = (name: string) => fields.filter(([key]) => key === name).map(([, value]) => value);
   const feedbackTypes = get("feedback-type");
   if (feedbackTypes.length !== 1 || !["abuse", "fraud", "virus"].includes(feedbackTypes[0]!.toLowerCase())) return null;
-  const versions = get("version");\n  if (versions.length !== 1 || versions[0] !== "1") return null;
+  const versions = get("version");
+  if (versions.length !== 1 || versions[0] !== "1") return null;
 
   const recipientValues = [...get("original-rcpt-to"), ...get("final-recipient")];
   if (recipientValues.length !== 1) return null;
