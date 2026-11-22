@@ -2,13 +2,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { timingSafeEqual } from "node:crypto";
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
-import { MailQueue, RecipientSuppressedError, type DeliveryEvent, type MailPayload } from "./queue.js";
+import { MailQueue, RecipientSuppressedError, UnknownDeliveryEventError, type DeliveryEvent, type MailPayload } from "./queue.js";
 
 export interface MailEnv {
   PORT: number; INTERNAL_SERVICE_TOKEN: string; EVENT_INGEST_TOKEN: string;
   QUEUE_DB_PATH: string; QUEUE_ENCRYPTION_KEY: string;
   SMTP_HOST: string; SMTP_PORT: number; SMTP_SECURE: boolean; SMTP_USER: string; SMTP_PASSWORD: string;
-  MAIL_FROM: string; MAIL_FROM_NAME: string;
+  MAIL_FROM: string; MAIL_FROM_NAME: string; BOUNCE_ADDRESS: string;
 }
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -100,11 +100,11 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
       if (!authorized(request, env.INTERNAL_SERVICE_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
       sendJson(response, 200, { suppressions: queue.suppressionStats() }); return;
     }
-    if (request.method !== "POST" || !["/v1/deliveries", "/v1/events"].includes(request.url ?? "")) {
+    if (request.method !== "POST" || !["/v1/deliveries", "/v1/events", "/v1/mta-events"].includes(request.url ?? "")) {
       sendJson(response, 404, { error: "not_found" }); return;
     }
-    const isEvent = request.url === "/v1/events";
-    if (!authorized(request, isEvent ? env.EVENT_INGEST_TOKEN : env.INTERNAL_SERVICE_TOKEN)) {
+    const isEvent = request.url === "/v1/events";\n    const isMtaEvent = request.url === "/v1/mta-events";
+    if (!authorized(request, isEvent || isMtaEvent ? env.EVENT_INGEST_TOKEN : env.INTERNAL_SERVICE_TOKEN)) {
       sendJson(response, 401, { error: "unauthorized" }); return;
     }
     let payload: unknown;
@@ -137,7 +137,7 @@ async function deliverOne(queue: MailQueue, transport: Pick<Transporter, "sendMa
   try {
     const message = messageFor(item.payload);
     await transport.sendMail({
-      from: { name: env.MAIL_FROM_NAME, address: env.MAIL_FROM }, to: item.payload.destination,
+      from: { name: env.MAIL_FROM_NAME, address: env.MAIL_FROM }, to: item.payload.destination,\n      envelope: { from: env.BOUNCE_ADDRESS, to: [item.payload.destination] },\n      dsn: { id: item.id, return: "headers", notify: ["failure", "delay"], recipient: item.payload.destination },
       subject: message.subject, text: message.text, html: message.html,
       headers: { "X-Luxora-Message-Class": "verification", "X-Luxora-Delivery-Id": item.id },
     });
