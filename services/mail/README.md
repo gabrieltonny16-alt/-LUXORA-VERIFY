@@ -10,7 +10,7 @@ be operated by LUXORA.
 Node.js 22 or later.
 
 1. Copy `.env.example` to a private environment file.
-2. Set an internal service token with at least 32 random bytes.
+2. Set distinct internal-delivery and event-ingestion tokens, each with at least 32 random bytes.
 3. Generate a separate 32-byte queue encryption key and base64-encode it.
 4. Configure an SMTP submission host, credentials, and verified sender address.
 5. Install dependencies, then run `npm run typecheck`, `npm test`, and `npm run build`.
@@ -38,8 +38,8 @@ backend is deliberately introduced.
 
 ## Bounce, complaint and suppression controls
 
-- `POST /v1/events` accepts authenticated, idempotent delivery events:
-  `hard_bounce`, `soft_bounce`, and `complaint`.
+- `POST /v1/events` requires the separate `EVENT_INGEST_TOKEN`, not the delivery token,
+  and accepts idempotent `hard_bounce`, `soft_bounce`, and `complaint` events.
 - Hard bounces and complaints create a durable suppression entry. Soft bounces are
   recorded for monitoring but do not automatically suppress the address.
 - Suppression keys are HMAC fingerprints; the suppression tables do not store raw
@@ -53,8 +53,9 @@ backend is deliberately introduced.
 
 The event endpoint is an authenticated intake contract, not yet a connected bounce
 receiver. A LUXORA-operated MTA DSN parser or signed provider-independent webhook
-adapter must still authenticate and translate real remote delivery notifications into
-this event format. Do not expose the event endpoint publicly or trust arbitrary callers.
+adapter must still authenticate with the separate event-ingestion credential and
+translate real remote delivery notifications into this event format. Do not expose the
+event endpoint publicly or trust arbitrary callers.
 
 ## Endpoints
 
@@ -64,7 +65,7 @@ this event format. Do not expose the event endpoint publicly or trust arbitrary 
 - `POST /v1/deliveries`: authenticated, idempotent queue submission.
   Body: `{ "destination": "person@example.com", "code": "123456", "purpose": "sign_up" }`.
   Header: `Idempotency-Key: <challenge-id>`.
-- `POST /v1/events`: authenticated delivery event intake.
+- `POST /v1/events`: separately authenticated delivery event intake.
   Body: `{ "eventId": "unique-event-id", "type": "hard_bounce", "recipient": "person@example.com" }`.
 
 The service reports durable queue acceptance to LUXORA VERIFY (the API audit label
