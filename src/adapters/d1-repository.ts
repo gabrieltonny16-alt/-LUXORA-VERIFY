@@ -167,7 +167,7 @@ export class D1VerifyRepository implements VerifyRepository {
     return (result.meta?.changes ?? 0) === 1;
   }
 
-  async recordDelivery(id: string, status: "sent" | "failed" | "unknown"): Promise<void> {
+  async recordDelivery(id: string, status: "queued" | "failed" | "unknown"): Promise<void> {
     await this.database.prepare(
       "UPDATE otp_challenges SET delivery_status = ? WHERE id = ?",
     ).bind(status, id).run();
