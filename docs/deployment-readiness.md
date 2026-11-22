@@ -10,7 +10,7 @@
 - SQLite WAL-backed persistent queue with AES-256-GCM encrypted payloads, idempotency keys,
   processing leases, restart recovery, bounded exponential retries, and payload clearing after
   successful or permanently failed delivery.
-- Durable hard-bounce, soft-bounce, and complaint event intake; event-ID deduplication;
+- Private read-only mail operations API protected by a dedicated admin token, with paginated queue, dead-letter, and suppression views that omit recipient addresses and OTP payloads.\n- Durable hard-bounce, soft-bounce, and complaint event intake; event-ID deduplication;
   HMAC-fingerprinted suppression records; queue cancellation; and suppression checks for new mail.
 - RFC 3464 multipart/report DSN parser, RFC 3461 envelope-ID request on SMTP submission,
   dedicated bounce envelope sender, recipient fingerprint correlation, and authenticated local
@@ -63,7 +63,7 @@ routing or delivery to external inboxes.
 1. Add end-to-end queue-state reconciliation so delivery outcomes can be surfaced consistently across services.
 2. Configure and validate a trusted provider-specific ARF feedback-loop source before routing
    reports to the local receiver; add operator review and safe suppression release controls.
-3. Add operator visibility and safe dead-letter review/replay controls.
+3. Build the graphical operator dashboard, then add audited suppression release and safe dead-letter replay with explicit confirmation.
 4. Connect the DSN receiver to a LUXORA-operated Postfix host and prove DSN support using controlled test addresses.
 5. Provision the mail host, Cloudflare Tunnel, and Access Service Auth only after explicit approval.
 6. Configure Worker secrets and D1, then run a reviewed end-to-end test.
