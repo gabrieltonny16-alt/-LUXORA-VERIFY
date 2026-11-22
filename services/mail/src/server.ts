@@ -159,7 +159,6 @@ async function deliverOne(queue: MailQueue, transport: Pick<Transporter, "sendMa
       subject: message.subject, text: message.text, html: message.html,
       headers: { "X-Luxora-Message-Class": "verification", "X-Luxora-Delivery-Id": item.id },
     } as never);
-    });
     queue.markSent(item.id);
   } catch {
     queue.markFailed(item.id, item.attempts, "smtp_submission_failed");
