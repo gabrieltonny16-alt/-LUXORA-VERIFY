@@ -12,6 +12,7 @@ const now = 1_800_000_000;
 class TestRepository implements VerifyRepository {
   readonly challenges = new Map<string, StoredChallenge>();
   readonly auditEvents: Array<{ event: string; outcome: string }> = [];
+  readonly deliveryStatuses: Array<"queued" | "failed" | "unknown"> = [];
   readonly project: VerifyProject = { id: "project_test", isActive: true, allowedChannels: ["email", "sms"] };
 
   async authenticateProject(keyHash: string): Promise<VerifyProject | null> {
@@ -50,7 +51,9 @@ class TestRepository implements VerifyRepository {
     return true;
   }
 
-  async recordDelivery(): Promise<void> {}
+  async recordDelivery(_id: string, status: "queued" | "failed" | "unknown"): Promise<void> {
+    this.deliveryStatuses.push(status);
+  }
   async audit(event: { event: string; outcome: string }): Promise<void> {
     this.auditEvents.push({ event: event.event, outcome: event.outcome });
   }
@@ -62,7 +65,7 @@ function setup() {
   const delivery: OtpDelivery = {
     async send(input) {
       deliveredCode = input.code;
-      return "sent";
+      return "queued";
     },
   };
   const handler = createVerifyHandler({
@@ -112,6 +115,8 @@ describe("LUXORA VERIFY HTTP API", () => {
     expect(body).not.toHaveProperty("code");
     expect(getDeliveredCode()).toMatch(/^\d{6}$/);
     expect(repository.challenges.size).toBe(1);
+    expect(repository.deliveryStatuses).toEqual(["queued"]);
+    expect(repository.auditEvents).toContainEqual({ event: "otp.requested", outcome: "queued" });
     expect([...repository.challenges.values()][0]?.destinationCiphertext).not.toContain("person@example.com");
   });
 
