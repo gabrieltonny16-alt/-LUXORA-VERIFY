@@ -10,7 +10,8 @@
 - SQLite WAL-backed persistent queue with AES-256-GCM encrypted payloads, idempotency keys,
   processing leases, restart recovery, bounded exponential retries, and payload clearing after
   successful or permanently failed delivery.
-- Private read-only mail operations API protected by a dedicated admin token, with paginated queue, dead-letter, and suppression views that omit recipient addresses and OTP payloads.\n- Durable hard-bounce, soft-bounce, and complaint event intake; event-ID deduplication;
+- Private read-only mail operations API protected by a dedicated admin token, with paginated queue, dead-letter, and suppression views that omit recipient addresses and OTP payloads.
+- Durable hard-bounce, soft-bounce, and complaint event intake; event-ID deduplication;
   HMAC-fingerprinted suppression records; queue cancellation; and suppression checks for new mail.
 - RFC 3464 multipart/report DSN parser, RFC 3461 envelope-ID request on SMTP submission,
   dedicated bounce envelope sender, recipient fingerprint correlation, and authenticated local
