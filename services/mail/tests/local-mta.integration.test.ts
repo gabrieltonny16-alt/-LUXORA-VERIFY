@@ -12,35 +12,27 @@ function startLocalMta() {
   let recipient = "";
   let notify = "";
   const server = createNetServer((socket: Socket) => {
-    socket.write("220 local-mta.test ESMTP ready\r
-");
+    socket.write("220 local-mta.test ESMTP ready\r\n");
     let buffer = "";
     let inData = false;
-    const reply = (value: string) => socket.write(value + "\r
-");
+    const reply = (value: string) => socket.write(value + "\r\n");
     socket.on("data", (chunk: Buffer) => {
       buffer += chunk.toString("utf8");
       while (true) {
         if (inData) {
-          const end = buffer.indexOf("\r
-.\r
-");
+          const end = buffer.indexOf("\r\n.\r\n");
           if (end < 0) return;
           buffer = buffer.slice(end + 5);
           inData = false;
           reply("250 2.0.0 accepted for local integration test");
           continue;
         }
-        const end = buffer.indexOf("\r
-");
+        const end = buffer.indexOf("\r\n");
         if (end < 0) return;
         const line = buffer.slice(0, end);
         buffer = buffer.slice(end + 2);
         if (/^EHLO\s/i.test(line) || /^HELO\s/i.test(line)) {
-          socket.write("250-local-mta.test\r
-250-DSN\r
-250 8BITMIME\r
-");
+          socket.write("250-local-mta.test\r\n250-DSN\r\n250 8BITMIME\r\n");
         } else if (/^MAIL FROM:/i.test(line)) {
           envelopeId = line.match(/\bENVID=([^\s]+)/i)?.[1]?.replace(/^"|"$/g, "") ?? "";
           reply("250 2.1.0 sender accepted");
@@ -100,8 +92,7 @@ function makeDsn(deliveryId: string, recipient: string): string {
     "Status: 5.1.1",
     "--luxora-local-test--",
     "",
-  ].join("\r
-");
+  ].join("\r\n");
 }
 
 test("local SMTP submission -> RFC DSN -> authenticated endpoint -> suppression", async () => {
@@ -112,7 +103,7 @@ test("local SMTP submission -> RFC DSN -> authenticated endpoint -> suppression"
   const eventToken = "local-integration-event-token-32-bytes";
   const env: MailEnv = {
     PORT: 0, INTERNAL_SERVICE_TOKEN: token, EVENT_INGEST_TOKEN: eventToken,
-    ADMIN_TOKEN: "local-integration-admin-token-32-bytes",
+    ADMIN_TOKEN: "local-integration-admin-token-32-bytes",\n    ADMIN_TOKEN: "local-integration-admin-token-32-bytes",
     QUEUE_DB_PATH: ":memory:", QUEUE_ENCRYPTION_KEY: queueKey,
     SMTP_HOST: "127.0.0.1", SMTP_PORT: mta.port, SMTP_SECURE: false,
     SMTP_USER: "", SMTP_PASSWORD: "", MAIL_FROM: "no-reply@luxora.test",
