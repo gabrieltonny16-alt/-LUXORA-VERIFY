@@ -12,6 +12,9 @@ export interface QueueStats { queued: number; processing: number; sent: number; 
 export class RecipientSuppressedError extends Error {
   constructor() { super("Recipient is suppressed"); this.name = "RecipientSuppressedError"; }
 }
+export class UnknownDeliveryEventError extends Error {
+  constructor() { super("Delivery reference is unknown or recipient does not match"); this.name = "UnknownDeliveryEventError"; }
+}
 function encrypt(value: string, key: Buffer): string {
   const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", key, iv);
   const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
@@ -39,7 +42,7 @@ export class MailQueue {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS mail_queue (
         id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, encrypted_payload TEXT NOT NULL,
-        status TEXT NOT NULL CHECK(status IN ('queued','processing','sent','dead')),
+        recipient_hash TEXT, status TEXT NOT NULL CHECK(status IN ('queued','processing','sent','dead')),
         attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
         lease_until INTEGER, last_error_code TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, sent_at INTEGER
       );
@@ -53,6 +56,10 @@ export class MailQueue {
         created_at INTEGER NOT NULL, source_event_id TEXT NOT NULL
       );
     `);
+    const columns = this.db.pragma("table_info(mail_queue)") as Array<{name:string}>;
+    if (!columns.some(column => column.name === "recipient_hash")) {
+      this.db.exec("ALTER TABLE mail_queue ADD COLUMN recipient_hash TEXT");
+    }
   }
   private recipientHash(address: string): string {
     return createHmac("sha256", this.key).update("luxora-mail-recipient-v1\0").update(normalizeAddress(address)).digest("hex");
@@ -65,10 +72,10 @@ export class MailQueue {
     const now = Date.now(), id = randomBytes(16).toString("hex");
     const insert = this.db.prepare(`
       INSERT OR IGNORE INTO mail_queue
-      (id,idempotency_key,encrypted_payload,status,attempts,next_attempt_at,expires_at,created_at,updated_at)
-      VALUES (?,?,?,'queued',0,?,?,?,?)
+      (id,idempotency_key,encrypted_payload,recipient_hash,status,attempts,next_attempt_at,expires_at,created_at,updated_at)
+      VALUES (?,?,?,?,'queued',0,?,?,?,?)
     `);
-    const result = insert.run(id, idempotencyKey, encrypt(JSON.stringify(payload), this.key), now, now + 5 * 60_000, now, now);
+    const result = insert.run(id, idempotencyKey, encrypt(JSON.stringify(payload), this.key), this.recipientHash(payload.destination), now, now + 5 * 60_000, now, now);
     const row = this.db.prepare("SELECT id,status,encrypted_payload FROM mail_queue WHERE idempotency_key=?")
       .get(idempotencyKey) as {id:string;status:EnqueueResult["status"];encrypted_payload:string};
     if (!result.changes && row.encrypted_payload && decrypt(row.encrypted_payload, this.key) !== JSON.stringify(payload)) {
@@ -101,6 +108,13 @@ export class MailQueue {
       }
       return { duplicate: false, suppressed: shouldSuppress || this.isSuppressed(event.recipient) };
     })();
+  }
+  recordMtaDeliveryEvent(deliveryId: string, event: DeliveryEvent): { duplicate: boolean; suppressed: boolean } {
+    const row = this.db.prepare("SELECT recipient_hash FROM mail_queue WHERE id=?").get(deliveryId) as {recipient_hash:string|null} | undefined;
+    if (!row?.recipient_hash || row.recipient_hash !== this.recipientHash(event.recipient)) {
+      throw new UnknownDeliveryEventError();
+    }
+    return this.recordDeliveryEvent(event);
   }
   suppressionStats(): { total: number; hardBounce: number; complaint: number; events: number } {
     const rows = this.db.prepare("SELECT reason,COUNT(*) AS count FROM mail_suppressions GROUP BY reason").all() as Array<{reason:string;count:number}>;
