@@ -9,6 +9,14 @@ export type DeliveryEventType = "hard_bounce" | "soft_bounce" | "complaint";
 export interface DeliveryEvent { eventId: string; type: DeliveryEventType; recipient: string; }
 export type EnqueueResult = { id: string; status: "queued" | "processing" | "sent" | "dead"; created: boolean };
 export interface QueueStats { queued: number; processing: number; sent: number; dead: number; }
+export interface QueueRecord {
+  id: string; status: "queued" | "processing" | "sent" | "dead"; attempts: number;
+  createdAt: number; updatedAt: number; nextAttemptAt: number; expiresAt: number;
+  lastErrorCode: string | null; sentAt: number | null;
+}
+export interface SuppressionRecord {
+  recipientRef: string; reason: "hard_bounce" | "complaint"; createdAt: number;
+}
 export class RecipientSuppressedError extends Error {
   constructor() { super("Recipient is suppressed"); this.name = "RecipientSuppressedError"; }
 }
@@ -164,6 +172,52 @@ export class MailQueue {
     }
     const delay = Math.min(60 * 60_000, 5_000 * (2 ** Math.min(nextAttempts - 1, 10)));
     this.db.prepare("UPDATE mail_queue SET status='queued',attempts=?,next_attempt_at=?,lease_until=NULL,last_error_code=?,updated_at=? WHERE id=? AND status='processing'").run(nextAttempts, now + delay, errorCode, now, id);
+  }
+  listQueue(limit = 50, offset = 0): QueueRecord[] {
+    const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+    const safeOffset = Math.max(0, Math.min(100_000, Math.trunc(offset)));
+    const rows = this.db.prepare(`
+      SELECT id,status,attempts,created_at,updated_at,next_attempt_at,expires_at,last_error_code,sent_at
+      FROM mail_queue ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?
+    `).all(safeLimit, safeOffset) as Array<{
+      id:string;status:QueueRecord["status"];attempts:number;created_at:number;updated_at:number;
+      next_attempt_at:number;expires_at:number;last_error_code:string|null;sent_at:number|null;
+    }>;
+    return rows.map(row => ({
+      id: row.id, status: row.status, attempts: row.attempts, createdAt: row.created_at,
+      updatedAt: row.updated_at, nextAttemptAt: row.next_attempt_at, expiresAt: row.expires_at,
+      lastErrorCode: row.last_error_code, sentAt: row.sent_at,
+    }));
+  }
+  listDeadLetters(limit = 50, offset = 0): QueueRecord[] {
+    return this.listQueueByStatus("dead", limit, offset);
+  }
+  private listQueueByStatus(status: QueueRecord["status"], limit: number, offset: number): QueueRecord[] {
+    const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+    const safeOffset = Math.max(0, Math.min(100_000, Math.trunc(offset)));
+    const rows = this.db.prepare(`
+      SELECT id,status,attempts,created_at,updated_at,next_attempt_at,expires_at,last_error_code,sent_at
+      FROM mail_queue WHERE status=? ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?
+    `).all(status, safeLimit, safeOffset) as Array<{
+      id:string;status:QueueRecord["status"];attempts:number;created_at:number;updated_at:number;
+      next_attempt_at:number;expires_at:number;last_error_code:string|null;sent_at:number|null;
+    }>;
+    return rows.map(row => ({
+      id: row.id, status: row.status, attempts: row.attempts, createdAt: row.created_at,
+      updatedAt: row.updated_at, nextAttemptAt: row.next_attempt_at, expiresAt: row.expires_at,
+      lastErrorCode: row.last_error_code, sentAt: row.sent_at,
+    }));
+  }
+  listSuppressions(limit = 50, offset = 0): SuppressionRecord[] {
+    const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+    const safeOffset = Math.max(0, Math.min(100_000, Math.trunc(offset)));
+    const rows = this.db.prepare(`
+      SELECT recipient_hash,reason,created_at FROM mail_suppressions
+      ORDER BY created_at DESC,recipient_hash ASC LIMIT ? OFFSET ?
+    `).all(safeLimit, safeOffset) as Array<{recipient_hash:string;reason:SuppressionRecord["reason"];created_at:number}>;
+    return rows.map(row => ({
+      recipientRef: row.recipient_hash.slice(0, 16), reason: row.reason, createdAt: row.created_at,
+    }));
   }
   stats(): QueueStats {
     const rows = this.db.prepare("SELECT status,COUNT(*) AS count FROM mail_queue GROUP BY status").all() as Array<{status: keyof QueueStats; count: number}>;
