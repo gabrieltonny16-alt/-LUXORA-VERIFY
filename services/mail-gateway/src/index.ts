@@ -90,10 +90,8 @@ export function createMailGateway(
       authorization: `Bearer ${env.MAIL_ORIGIN_TOKEN}`,
       "idempotency-key": idempotencyKey,
     });
-    if (env.CF_ACCESS_CLIENT_ID && env.CF_ACCESS_CLIENT_SECRET) {
-      headers.set("CF-Access-Client-Id", env.CF_ACCESS_CLIENT_ID);
-      headers.set("CF-Access-Client-Secret", env.CF_ACCESS_CLIENT_SECRET);
-    }
+    headers.set("CF-Access-Client-Id", env.CF_ACCESS_CLIENT_ID);
+    headers.set("CF-Access-Client-Secret", env.CF_ACCESS_CLIENT_SECRET);
     try {
       const upstream = await upstreamFetch(endpoint, {
         method: "POST",
