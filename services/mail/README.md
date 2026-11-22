@@ -12,7 +12,7 @@ Node.js 22 or later.
 1. Copy `.env.example` to a private environment file.
 2. Set distinct internal-delivery and event-ingestion tokens, each with at least 32 random bytes.
 3. Generate a separate 32-byte queue encryption key and base64-encode it.
-4. Configure an SMTP submission host, credentials, and verified sender address.
+4. Configure an SMTP submission host, credentials, verified sender, and dedicated bounce address.
 5. Install dependencies, then run `npm run typecheck`, `npm test`, and `npm run build`.
 6. Start with `npm run start`.
 
@@ -29,6 +29,10 @@ backend is deliberately introduced.
 - A successful `202` means the request was durably accepted into SQLite, not that the
   recipient's inbox received it.
 - Queue payloads (destination, OTP, purpose) are encrypted with AES-256-GCM at rest.
+- A keyed HMAC recipient fingerprint is retained on each queue row so later delivery
+  reports can be checked against the original recipient without retaining the address.
+- SMTP submission requests DSN failure/delay reports and sets the RFC 3461 envelope ID
+  to the internal delivery ID. The envelope sender is `BOUNCE_ADDRESS`.
 - Duplicate challenge IDs return the existing queue item instead of creating a second
   message. Reusing a key for a different still-queued payload is rejected.
 - A worker claims one item at a time, recovers expired processing leases, and retries
@@ -36,10 +40,54 @@ backend is deliberately introduced.
 - Successfully sent and permanently failed queue rows have their encrypted payload
   cleared. Dead-letter records retain only non-sensitive delivery metadata.
 
+## Actual MTA bounce receiver
+
+The compiled `dist/dsn-receiver.js` command reads one raw RFC 3464
+`multipart/report; report-type=delivery-status` message from standard input. It:
+
+1. Extracts the original envelope ID, final recipient, action, and enhanced status code.
+2. Accepts only one-recipient DSNs with a valid 32-character delivery ID.
+3. Maps permanent `failed` / `5.x.x` reports to hard bounces and temporary
+   `delayed` or `failed` / `4.x.x` reports to soft bounces.
+4. Derives a stable event ID from the raw DSN bytes, then posts it to the loopback-only
+   `/v1/mta-events` endpoint using `EVENT_INGEST_TOKEN`.
+5. The endpoint checks that the delivery ID exists and that the reported recipient's
+   HMAC fingerprint matches the original queued delivery before recording anything.
+
+Unmatched, malformed, multi-recipient, delivered, and unsupported reports are ignored.
+The receiver does not trust a recipient address or delivery ID merely because they occur
+in an email header. The local endpoint must never be exposed publicly.
+
+### Postfix integration plan
+
+The intended topology is:
+
+`bounces@your-domain.example` -> Postfix local/virtual recipient routing ->
+restricted Postfix `pipe` transport -> `node /opt/luxora-mail/dist/dsn-receiver.js` ->
+`127.0.0.1:8788/v1/mta-events`.
+
+A Postfix pipe transport can invoke the receiver with the raw message on stdin. The
+receiver process needs access to the same private `EVENT_INGEST_TOKEN` as LUXORA MAIL.
+Use a root-managed, least-privilege environment file readable only by the dedicated
+mail service account; never put the token in a command-line argument, Postfix log, or
+world-readable configuration. Route only the dedicated bounce address to this pipe.
+Keep normal mail routing separate.
+
+The mail host must support RFC 3461/3464 DSN extensions and preserve the original
+envelope ID. If the upstream SMTP server does not support DSN, automatic correlation
+cannot work; do not silently infer delivery IDs from subjects or untrusted message
+headers. Test this end-to-end using controlled test addresses before enabling production
+routing.
+
+This receiver handles delivery-status notifications, not spam complaints. Complaints
+need a separate authenticated ARF/feedback-loop parser and are not inferred from DSNs.
+
 ## Bounce, complaint and suppression controls
 
-- `POST /v1/events` requires the separate `EVENT_INGEST_TOKEN`, not the delivery token,
-  and accepts idempotent `hard_bounce`, `soft_bounce`, and `complaint` events.
+- `POST /v1/events` requires the separate `EVENT_INGEST_TOKEN` and accepts internal
+  authenticated `hard_bounce`, `soft_bounce`, and `complaint` events.
+- `POST /v1/mta-events` requires the same private event-ingestion token plus a delivery
+  ID and event. It verifies the stored recipient fingerprint before accepting a DSN.
 - Hard bounces and complaints create a durable suppression entry. Soft bounces are
   recorded for monitoring but do not automatically suppress the address.
 - Suppression keys are HMAC fingerprints; the suppression tables do not store raw
@@ -51,22 +99,14 @@ backend is deliberately introduced.
 - Replayed event IDs are deduplicated. `GET /v1/suppressions` returns aggregate counts
   only, never recipient addresses.
 
-The event endpoint is an authenticated intake contract, not yet a connected bounce
-receiver. A LUXORA-operated MTA DSN parser or signed provider-independent webhook
-adapter must still authenticate with the separate event-ingestion credential and
-translate real remote delivery notifications into this event format. Do not expose the
-event endpoint publicly or trust arbitrary callers.
-
 ## Endpoints
 
 - `GET /health`: process health.
 - `GET /v1/queue`: authenticated queue counters (queued, processing, sent, dead).
 - `GET /v1/suppressions`: authenticated aggregate suppression/event counters.
 - `POST /v1/deliveries`: authenticated, idempotent queue submission.
-  Body: `{ "destination": "person@example.com", "code": "123456", "purpose": "sign_up" }`.
-  Header: `Idempotency-Key: <challenge-id>`.
-- `POST /v1/events`: separately authenticated delivery event intake.
-  Body: `{ "eventId": "unique-event-id", "type": "hard_bounce", "recipient": "person@example.com" }`.
+- `POST /v1/events`: authenticated event intake for trusted internal adapters.
+- `POST /v1/mta-events`: authenticated DSN intake with delivery-ID/recipient matching.
 
 The service reports durable queue acceptance to LUXORA VERIFY (the API audit label
 `sent` means accepted by the internal delivery queue, not confirmed inbox delivery).
