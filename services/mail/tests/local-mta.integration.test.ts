@@ -12,13 +12,12 @@ function startLocalMta() {
   let recipient = "";
   let notify = "";
   const server = createNetServer((socket: Socket) => {
-    socket.setEncoding("utf8");
     socket.write("220 local-mta.test ESMTP ready\r\n");
     let buffer = "";
     let inData = false;
     const reply = (value: string) => socket.write(value + "\r\n");
-    socket.on("data", (chunk: string) => {
-      buffer += chunk;
+    socket.on("data", (chunk: Buffer) => {
+      buffer += chunk.toString("utf8");
       while (true) {
         if (inData) {
           const end = buffer.indexOf("\r\n.\r\n");
