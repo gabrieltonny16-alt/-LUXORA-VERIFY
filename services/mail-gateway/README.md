@@ -32,10 +32,20 @@ Set these as Worker secrets for the gateway (never commit them):
 - `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`: Cloudflare Access Service
   Token credentials for the origin hostname. Both are mandatory.
 
-The LUXORA VERIFY Worker also needs its existing D1 binding and secrets. Its
-`MAIL_SERVICE` binding is declared in the repository root `wrangler.toml`.
-The D1 database ID in that file is deliberately a placeholder until the database is
-created and approved. SMS service binding and SMS delivery are separate work.
+The LUXORA VERIFY Worker also needs its D1 binding and secrets. Its `MAIL_SERVICE`
+binding is declared in the repository root `wrangler.toml`. The D1 database ID in that
+file is deliberately a placeholder until the database is created and approved.
+
+The two bearer-token values must match across the boundary:
+- Gateway `VERIFY_TO_GATEWAY_TOKEN` = Worker `MAIL_SERVICE_TOKEN`.
+- Gateway `MAIL_ORIGIN_TOKEN` = Node mail `INTERNAL_SERVICE_TOKEN`.
+
+Configure secrets only after the corresponding services and policies exist. For the
+gateway, use `npx wrangler secret put <SECRET_NAME> --config
+services/mail-gateway/wrangler.toml` for each required secret. For LUXORA VERIFY, use
+`npx wrangler secret put MAIL_SERVICE_TOKEN --config wrangler.toml` and configure the
+existing OTP/API peppers and encryption key through the same secret mechanism. SMS
+service binding and SMS delivery are separate work.
 
 ## Provisioning sequence (not performed)
 
