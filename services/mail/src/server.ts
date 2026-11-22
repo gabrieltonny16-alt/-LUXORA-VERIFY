@@ -76,6 +76,13 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
     if (request.method === "GET" && request.url === "/health") {
       sendJson(response, 200, { status: "ok", service: "luxora-mail", queue: "persistent" }); return;
     }
+    if (request.method === "GET" && request.url === "/v1/queue") {
+      const auth = request.headers.authorization ?? "";
+      const supplied = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
+      if (!tokenMatches(supplied, env.INTERNAL_SERVICE_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
+      sendJson(response, 200, { queue: queue.stats() });
+      return;
+    }
     if (request.method !== "POST" || request.url !== "/v1/deliveries") {
       sendJson(response, 404, { error: "not_found" }); return;
     }
