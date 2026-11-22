@@ -147,7 +147,7 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
     }
   });
 }
-async function deliverOne(queue: MailQueue, transport: Pick<Transporter, "sendMail">, env: MailEnv): Promise<void> {
+export async function deliverOne(queue: MailQueue, transport: Pick<Transporter, "sendMail">, env: MailEnv): Promise<void> {
   const item = queue.claim();
   if (!item) return;
   if (queue.isSuppressed(item.payload.destination)) { queue.markSuppressed(item.id); return; }
