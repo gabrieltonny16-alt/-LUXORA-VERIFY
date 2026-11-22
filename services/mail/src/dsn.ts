@@ -64,8 +64,9 @@ export async function parseDeliveryStatusReport(raw: Buffer | string): Promise<P
   const blocks = reportText.split(/\r?\n[ \t]*\r?\n/).map(block => block.trim()).filter(Boolean);
   if (blocks.length < 2) return null;
   const parsedBlocks = blocks.map(parseFields);
-  const deliveryId = parsedBlocks.map(fields => fields.get("original-envelope-id"))
-    .find(value => value !== undefined)?.replace(/^<|>$/g, "").trim();
+  const envelopeId = parsedBlocks.map(fields => fields.get("original-envelope-id"))
+    .find(value => value !== undefined);
+  const deliveryId = envelopeId ? envelopeId.replace(/^<|>$/g, "").trim() : null;
   if (!deliveryId || !/^[a-f0-9]{32}$/i.test(deliveryId)) return null;
   const recipients = parsedBlocks.filter(fields => fields.has("final-recipient"));
   if (recipients.length !== 1 || !recipients[0]) return null;
