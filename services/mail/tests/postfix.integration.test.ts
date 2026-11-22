@@ -48,12 +48,15 @@ test("real Postfix SMTP submission -> generated RFC 3464 DSN -> LUXORA suppressi
     connectionTimeout: 3000, greetingTimeout: 3000, socketTimeout: 5000,
   });
   const destination = "unknown-postfix-recipient@luxora.test";
+  let smtpFailure = "none";
   try {
     const queued = queue.enqueue("postfix-integration-delivery-0001", {
       destination, code: "123456", purpose: "sign_up",
     });
-    await deliverOne(queue, transport, env);
-    assert.equal(queue.stats().sent, 1, "Postfix must accept the SMTP submission into its queue");
+    await deliverOne(queue, transport, env, error => {
+      smtpFailure = error instanceof Error ? error.message : String(error);
+    });
+    assert.equal(queue.stats().sent, 1, `Postfix must accept SMTP submission; safe diagnostic: ${smtpFailure}`);
 
     const rawDsn = await waitForDsn(queued.id);
     const parsed = await parseDeliveryStatusReport(rawDsn);
