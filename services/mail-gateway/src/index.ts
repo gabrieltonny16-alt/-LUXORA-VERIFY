@@ -80,7 +80,10 @@ export function createMailGateway(
     const payload = await readLimitedBody(request, 8192);
     if (!validBody(payload)) return json({ error: "invalid_request" }, 400);
     const endpoint = originEndpoint(env.MAIL_ORIGIN_URL);
-    if (!endpoint || env.MAIL_ORIGIN_TOKEN.length < 32\n      || !env.CF_ACCESS_CLIENT_ID || !env.CF_ACCESS_CLIENT_SECRET) {\n      return json({ error: "gateway_not_configured" }, 503);\n    }
+    if (!endpoint || env.MAIL_ORIGIN_TOKEN.length < 32
+      || !env.CF_ACCESS_CLIENT_ID || !env.CF_ACCESS_CLIENT_SECRET) {
+      return json({ error: "gateway_not_configured" }, 503);
+    }
 
     const headers = new Headers({
       "content-type": "application/json",
