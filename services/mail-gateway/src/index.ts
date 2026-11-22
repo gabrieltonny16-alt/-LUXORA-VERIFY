@@ -2,8 +2,8 @@ export interface MailGatewayEnv {
   VERIFY_TO_GATEWAY_TOKEN: string;
   MAIL_ORIGIN_URL: string;
   MAIL_ORIGIN_TOKEN: string;
-  CF_ACCESS_CLIENT_ID?: string;
-  CF_ACCESS_CLIENT_SECRET?: string;
+  CF_ACCESS_CLIENT_ID: string;
+  CF_ACCESS_CLIENT_SECRET: string;
 }
 type DeliveryBody = {
   destination: string;
@@ -69,7 +69,8 @@ export function createMailGateway(
       return json({ status: "ok", service: "luxora-mail-gateway" }, 200);
     }
     if (request.method !== "POST" || url.pathname !== "/v1/deliveries") return json({ error: "not_found" }, 404);
-    if (env.VERIFY_TO_GATEWAY_TOKEN.length < 32) return json({ error: "gateway_not_configured" }, 503);\n    if (!equalSecret(request.headers.get("authorization")?.startsWith("Bearer ")
+    if (env.VERIFY_TO_GATEWAY_TOKEN.length < 32) return json({ error: "gateway_not_configured" }, 503);
+    if (!equalSecret(request.headers.get("authorization")?.startsWith("Bearer ")
       ? request.headers.get("authorization")!.slice(7) : null, env.VERIFY_TO_GATEWAY_TOKEN)) {
       return json({ error: "unauthorized" }, 401);
     }
