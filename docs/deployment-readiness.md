@@ -13,6 +13,8 @@
 - Durable delivery-event intake for hard bounces, soft bounces, and complaints; event-ID
   deduplication; HMAC-fingerprinted suppression records; queue cancellation for suppressed
   recipients; rejection of future sends to suppressed recipients; and aggregate-only counters.
+- Separate internal-delivery and event-ingestion credentials, with independent authentication
+  checks for the event intake route.
 - Tests for queue persistence, idempotency, payload mismatch, encryption-key validation,
   bounce/complaint suppression, soft-bounce handling, event authentication, and suppression
   response behaviour.
