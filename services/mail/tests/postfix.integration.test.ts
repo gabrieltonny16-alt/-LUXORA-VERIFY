@@ -29,6 +29,7 @@ test("real Postfix SMTP submission -> generated RFC 3464 DSN -> LUXORA suppressi
   const internalToken = "postfix-integration-internal-token-32-bytes";
   const env: MailEnv = {
     PORT: 0, INTERNAL_SERVICE_TOKEN: internalToken, EVENT_INGEST_TOKEN: eventToken,
+    ADMIN_TOKEN: "z".repeat(40),
     QUEUE_DB_PATH: ":memory:", QUEUE_ENCRYPTION_KEY: queueKey,
     SMTP_HOST: "127.0.0.1", SMTP_PORT: 25, SMTP_SECURE: false,
     SMTP_USER: "", SMTP_PASSWORD: "", MAIL_FROM: "verify@luxora.test",
