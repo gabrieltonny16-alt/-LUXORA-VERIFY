@@ -1,6 +1,6 @@
 {
   "name": "@luxora-verify/mail",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,9 +9,11 @@
     "build": "tsc -p tsconfig.json --outDir dist --noEmit false"
   },
   "dependencies": {
+    "better-sqlite3": "^11.10.0",
     "nodemailer": "^7.0.3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.30",
     "@types/nodemailer": "^6.4.17",
     "tsx": "^4.19.4",
