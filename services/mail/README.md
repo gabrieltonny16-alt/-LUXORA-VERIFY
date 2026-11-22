@@ -37,7 +37,7 @@ backend is deliberately introduced.
 
 ## Endpoints
 
-- `GET /health`: process health.
+- `GET /health`: process health.\n- `GET /v1/queue`: authenticated queue counters (queued, processing, sent, dead); it never returns recipient data or OTP values.
 - `POST /v1/deliveries`: authenticated, idempotent queue submission.
   Body: `{ "destination": "person@example.com", "code": "123456", "purpose": "sign_up" }`.
   Header: `Idempotency-Key: <challenge-id>`.
