@@ -43,12 +43,12 @@ function deliveryStatusPart(raw: Buffer): string | null {
     const headerBreak = part.match(/\r?\n\r?\n/);
     if (!headerBreak || headerBreak.index === undefined) continue;
     const headers = parseFields(part.slice(0, headerBreak.index));
-    const type = (headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    const type = ((headers.get("content-type") ?? "").split(";")[0] ?? "").trim().toLowerCase();
     if (type !== "message/delivery-status") continue;
     const content = part.slice(headerBreak.index + headerBreak[0].length).replace(/\r?\n$/, "");
     matches.push(decodePart(content, headers.get("content-transfer-encoding")));
   }
-  return matches.length === 1 ? matches[0] : null;
+  return matches.length === 1 && matches[0] ? matches[0] : null;
 }
 function addressFromRecipient(value: string | undefined): string | null {
   if (!value) return null;
