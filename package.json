@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Provider-independent OTP verification service",
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run tests/core tests/http tests/gateway",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
