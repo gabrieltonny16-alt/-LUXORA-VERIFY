@@ -101,17 +101,18 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
       if (!authorized(request, env.INTERNAL_SERVICE_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
       sendJson(response, 200, { suppressions: queue.suppressionStats() }); return;
     }
-    if (request.method !== "POST" || !["/v1/deliveries", "/v1/events", "/v1/mta-events"].includes(request.url ?? "")) {
+    if (request.method !== "POST" || !["/v1/deliveries", "/v1/events", "/v1/mta-events", "/v1/arf-events"].includes(request.url ?? "")) {
       sendJson(response, 404, { error: "not_found" }); return;
     }
     const isEvent = request.url === "/v1/events";
     const isMtaEvent = request.url === "/v1/mta-events";
-    if (!authorized(request, isEvent || isMtaEvent ? env.EVENT_INGEST_TOKEN : env.INTERNAL_SERVICE_TOKEN)) {
+    const isArfEvent = request.url === "/v1/arf-events";
+    if (!authorized(request, isEvent || isMtaEvent || isArfEvent ? env.EVENT_INGEST_TOKEN : env.INTERNAL_SERVICE_TOKEN)) {
       sendJson(response, 401, { error: "unauthorized" }); return;
     }
     let payload: unknown;
     try { payload = await readBody(request); } catch { sendJson(response, 400, { error: "invalid_request" }); return; }
-    if (isMtaEvent) {
+    if (isArfEvent) {\n      if (!validDeliveryEvent(payload) || payload.type !== "complaint") { sendJson(response, 400, { error: "invalid_complaint_event" }); return; }\n      const result = queue.recordDeliveryEvent(payload);\n      sendJson(response, 202, { accepted: true, duplicate: result.duplicate, suppressed: result.suppressed });\n      return;\n    }\n    if (isMtaEvent) {
       if (typeof payload !== "object" || payload === null || Array.isArray(payload)) { sendJson(response, 400, { error: "invalid_event" }); return; }
       const item = payload as Record<string, unknown>;
       if (typeof item.deliveryId !== "string" || !/^[a-f0-9]{32}$/i.test(item.deliveryId) || !validDeliveryEvent(item.event)) {
