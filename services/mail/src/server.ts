@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { timingSafeEqual } from "node:crypto";
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
-import { MailQueue, type MailPayload } from "./queue.js";
+import { MailQueue, RecipientSuppressedError, type DeliveryEvent, type MailPayload } from "./queue.js";
 
 export interface MailEnv {
   PORT: number; INTERNAL_SERVICE_TOKEN: string; QUEUE_DB_PATH: string; QUEUE_ENCRYPTION_KEY: string;
@@ -50,10 +50,22 @@ function validDelivery(value: unknown): value is MailPayload {
     && typeof item.code === "string" && /^\d{6}$/.test(item.code)
     && ["sign_up", "sign_in", "password_reset", "change_contact"].includes(String(item.purpose));
 }
+function validDeliveryEvent(value: unknown): value is DeliveryEvent {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.eventId === "string" && /^[A-Za-z0-9_-]{8,128}$/.test(item.eventId)
+    && ["hard_bounce", "soft_bounce", "complaint"].includes(String(item.type))
+    && typeof item.recipient === "string" && item.recipient.length <= 254
+    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item.recipient);
+}
 function tokenMatches(provided: string | undefined, expected: string): boolean {
   if (!provided) return false;
   const left = Buffer.from(provided, "utf8"), right = Buffer.from(expected, "utf8");
   return left.length === right.length && timingSafeEqual(left, right);
+}
+function authorized(request: IncomingMessage, token: string): boolean {
+  const auth = request.headers.authorization ?? "";
+  return tokenMatches(auth.startsWith("Bearer ") ? auth.slice(7) : undefined, token);
 }
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -77,20 +89,25 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
       sendJson(response, 200, { status: "ok", service: "luxora-mail", queue: "persistent" }); return;
     }
     if (request.method === "GET" && request.url === "/v1/queue") {
-      const auth = request.headers.authorization ?? "";
-      const supplied = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
-      if (!tokenMatches(supplied, env.INTERNAL_SERVICE_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
-      sendJson(response, 200, { queue: queue.stats() });
-      return;
+      if (!authorized(request, env.INTERNAL_SERVICE_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
+      sendJson(response, 200, { queue: queue.stats() }); return;
     }
-    if (request.method !== "POST" || request.url !== "/v1/deliveries") {
+    if (request.method === "GET" && request.url === "/v1/suppressions") {
+      if (!authorized(request, env.INTERNAL_SERVICE_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
+      sendJson(response, 200, { suppressions: queue.suppressionStats() }); return;
+    }
+    if (request.method !== "POST" || !["/v1/deliveries", "/v1/events"].includes(request.url ?? "")) {
       sendJson(response, 404, { error: "not_found" }); return;
     }
-    const auth = request.headers.authorization ?? "";
-    const supplied = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
-    if (!tokenMatches(supplied, env.INTERNAL_SERVICE_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
+    if (!authorized(request, env.INTERNAL_SERVICE_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
     let payload: unknown;
     try { payload = await readBody(request); } catch { sendJson(response, 400, { error: "invalid_request" }); return; }
+    if (request.url === "/v1/events") {
+      if (!validDeliveryEvent(payload)) { sendJson(response, 400, { error: "invalid_event" }); return; }
+      const result = queue.recordDeliveryEvent(payload);
+      sendJson(response, 202, { accepted: true, duplicate: result.duplicate, suppressed: result.suppressed });
+      return;
+    }
     if (!validDelivery(payload)) { sendJson(response, 400, { error: "invalid_request" }); return; }
     const key = request.headers["idempotency-key"];
     const idempotencyKey = Array.isArray(key) ? key[0] : key;
@@ -100,12 +117,16 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
     try {
       const result = queue.enqueue(idempotencyKey, payload);
       sendJson(response, 202, { accepted: true, delivery_id: result.id, status: result.status, duplicate: !result.created });
-    } catch { sendJson(response, 503, { error: "queue_unavailable" }); }
+    } catch (error) {
+      if (error instanceof RecipientSuppressedError) { sendJson(response, 409, { error: "recipient_suppressed" }); return; }
+      sendJson(response, 503, { error: "queue_unavailable" });
+    }
   });
 }
 async function deliverOne(queue: MailQueue, transport: Pick<Transporter, "sendMail">, env: MailEnv): Promise<void> {
   const item = queue.claim();
   if (!item) return;
+  if (queue.isSuppressed(item.payload.destination)) { queue.markSuppressed(item.id); return; }
   try {
     const message = messageFor(item.payload);
     await transport.sendMail({
