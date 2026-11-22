@@ -10,7 +10,7 @@ export class InternalDeliveryRouter implements OtpDelivery {
   constructor(private readonly services: InternalDeliveryConfig) {}
   async send(input: {
     channel: OtpChannel; destination: string; code: string; purpose: OtpPurpose; idempotencyKey: string;
-  }): Promise<"sent" | "failed" | "unknown"> {
+  }): Promise<"queued" | "failed" | "unknown"> {
     const service = input.channel === "email" ? this.services.mail : this.services.sms;
     const token = input.channel === "email" ? this.services.mailToken : this.services.smsToken;
     const path = input.channel === "email" ? "mail" : "sms";
@@ -24,7 +24,7 @@ export class InternalDeliveryRouter implements OtpDelivery {
         },
         body: JSON.stringify({ destination: input.destination, code: input.code, purpose: input.purpose }),
       }));
-      if (result.status === 202 || result.status === 200) return "sent";
+      if (result.status === 202 || result.status === 200) return "queued";
       if (result.status >= 500) return "unknown";
       return "failed";
     } catch {
