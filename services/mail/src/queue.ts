@@ -1,12 +1,17 @@
 import Database from "better-sqlite3";
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 export interface MailPayload { destination: string; code: string; purpose: "sign_up" | "sign_in" | "password_reset" | "change_contact"; }
 export interface QueueItem { id: string; idempotencyKey: string; payload: MailPayload; attempts: number; }
+export type DeliveryEventType = "hard_bounce" | "soft_bounce" | "complaint";
+export interface DeliveryEvent { eventId: string; type: DeliveryEventType; recipient: string; }
 export type EnqueueResult = { id: string; status: "queued" | "processing" | "sent" | "dead"; created: boolean };
 export interface QueueStats { queued: number; processing: number; sent: number; dead: number; }
+export class RecipientSuppressedError extends Error {
+  constructor() { super("Recipient is suppressed"); this.name = "RecipientSuppressedError"; }
+}
 function encrypt(value: string, key: Buffer): string {
   const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", key, iv);
   const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
@@ -19,6 +24,7 @@ function decrypt(value: string, key: Buffer): string {
   decipher.setAuthTag(Buffer.from(tagText, "base64"));
   return Buffer.concat([decipher.update(Buffer.from(dataText, "base64")), decipher.final()]).toString("utf8");
 }
+function normalizeAddress(address: string): string { return address.trim().toLowerCase(); }
 export class MailQueue {
   private readonly db: InstanceType<typeof Database>;
   private readonly key: Buffer;
@@ -38,9 +44,24 @@ export class MailQueue {
         lease_until INTEGER, last_error_code TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, sent_at INTEGER
       );
       CREATE INDEX IF NOT EXISTS mail_queue_ready_idx ON mail_queue(status, next_attempt_at, lease_until, expires_at);
+      CREATE TABLE IF NOT EXISTS mail_delivery_events (
+        event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL CHECK(event_type IN ('hard_bounce','soft_bounce','complaint')),
+        recipient_hash TEXT NOT NULL, received_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS mail_suppressions (
+        recipient_hash TEXT PRIMARY KEY, reason TEXT NOT NULL CHECK(reason IN ('hard_bounce','complaint')),
+        created_at INTEGER NOT NULL, source_event_id TEXT NOT NULL
+      );
     `);
   }
+  private recipientHash(address: string): string {
+    return createHmac("sha256", this.key).update("luxora-mail-recipient-v1\0").update(normalizeAddress(address)).digest("hex");
+  }
+  isSuppressed(address: string): boolean {
+    return Boolean(this.db.prepare("SELECT 1 FROM mail_suppressions WHERE recipient_hash=?").get(this.recipientHash(address)));
+  }
   enqueue(idempotencyKey: string, payload: MailPayload): EnqueueResult {
+    if (this.isSuppressed(payload.destination)) throw new RecipientSuppressedError();
     const now = Date.now(), id = randomBytes(16).toString("hex");
     const insert = this.db.prepare(`
       INSERT OR IGNORE INTO mail_queue
@@ -54,6 +75,43 @@ export class MailQueue {
       throw new Error("Idempotency key was already used for a different delivery");
     }
     return { id: row.id, status: row.status, created: result.changes === 1 };
+  }
+  recordDeliveryEvent(event: DeliveryEvent): { duplicate: boolean; suppressed: boolean } {
+    const now = Date.now(), recipientHash = this.recipientHash(event.recipient);
+    return this.db.transaction(() => {
+      const inserted = this.db.prepare(
+        "INSERT OR IGNORE INTO mail_delivery_events(event_id,event_type,recipient_hash,received_at) VALUES (?,?,?,?)"
+      ).run(event.eventId, event.type, recipientHash, now);
+      if (inserted.changes === 0) return { duplicate: true, suppressed: this.isSuppressed(event.recipient) };
+      const shouldSuppress = event.type === "hard_bounce" || event.type === "complaint";
+      if (shouldSuppress) {
+        this.db.prepare(`
+          INSERT INTO mail_suppressions(recipient_hash,reason,created_at,source_event_id) VALUES (?,?,?,?)
+          ON CONFLICT(recipient_hash) DO UPDATE SET
+            reason=CASE WHEN mail_suppressions.reason='complaint' THEN 'complaint' ELSE excluded.reason END
+        `).run(recipientHash, event.type, now, event.eventId);
+        const rows = this.db.prepare("SELECT id,encrypted_payload FROM mail_queue WHERE status IN ('queued','processing') AND encrypted_payload<>''").all() as Array<{id:string;encrypted_payload:string}>;
+        const stop = this.db.prepare("UPDATE mail_queue SET status='dead',encrypted_payload='',lease_until=NULL,last_error_code='recipient_suppressed',updated_at=? WHERE id=? AND status IN ('queued','processing')");
+        for (const row of rows) {
+          try {
+            const payload = JSON.parse(decrypt(row.encrypted_payload, this.key)) as MailPayload;
+            if (this.recipientHash(payload.destination) === recipientHash) stop.run(now, row.id);
+          } catch { /* Keep malformed rows isolated; never expose payload data. */ }
+        }
+      }
+      return { duplicate: false, suppressed: shouldSuppress || this.isSuppressed(event.recipient) };
+    })();
+  }
+  suppressionStats(): { total: number; hardBounce: number; complaint: number; events: number } {
+    const rows = this.db.prepare("SELECT reason,COUNT(*) AS count FROM mail_suppressions GROUP BY reason").all() as Array<{reason:string;count:number}>;
+    const result = { total: 0, hardBounce: 0, complaint: 0, events: 0 };
+    for (const row of rows) {
+      result.total += row.count;
+      if (row.reason === "hard_bounce") result.hardBounce = row.count;
+      if (row.reason === "complaint") result.complaint = row.count;
+    }
+    result.events = (this.db.prepare("SELECT COUNT(*) AS count FROM mail_delivery_events").get() as {count:number}).count;
+    return result;
   }
   claim(leaseMs = 60_000): QueueItem | null {
     const now = Date.now();
@@ -80,6 +138,9 @@ export class MailQueue {
   markSent(id: string): void {
     const now = Date.now();
     this.db.prepare("UPDATE mail_queue SET status='sent',sent_at=?,lease_until=NULL,encrypted_payload='',updated_at=? WHERE id=? AND status='processing'").run(now, now, id);
+  }
+  markSuppressed(id: string): void {
+    this.db.prepare("UPDATE mail_queue SET status='dead',encrypted_payload='',lease_until=NULL,last_error_code='recipient_suppressed',updated_at=? WHERE id=? AND status='processing'").run(Date.now(), id);
   }
   markFailed(id: string, attempts: number, errorCode: string, maxAttempts = 8): void {
     const now = Date.now(), nextAttempts = attempts + 1;
