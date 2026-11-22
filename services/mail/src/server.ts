@@ -6,7 +6,7 @@ import type { Transporter } from "nodemailer";
 import { MailQueue, RecipientSuppressedError, UnknownDeliveryEventError, type DeliveryEvent, type MailPayload } from "./queue.js";
 
 export interface MailEnv {
-  PORT: number; INTERNAL_SERVICE_TOKEN: string; EVENT_INGEST_TOKEN: string;
+  PORT: number; INTERNAL_SERVICE_TOKEN: string; EVENT_INGEST_TOKEN: string; ADMIN_TOKEN: string;
   QUEUE_DB_PATH: string; QUEUE_ENCRYPTION_KEY: string;
   SMTP_HOST: string; SMTP_PORT: number; SMTP_SECURE: boolean; SMTP_USER: string; SMTP_PASSWORD: string;
   MAIL_FROM: string; MAIL_FROM_NAME: string; BOUNCE_ADDRESS: string;
@@ -22,13 +22,13 @@ function loadEnv(): MailEnv {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid PORT");
   if (!Number.isInteger(smtpPort) || smtpPort < 1 || smtpPort > 65535) throw new Error("Invalid SMTP_PORT");
   const token = required("INTERNAL_SERVICE_TOKEN");
-  const eventToken = required("EVENT_INGEST_TOKEN");
+  const eventToken = required("EVENT_INGEST_TOKEN");\n  const adminToken = required("ADMIN_TOKEN");
   if (Buffer.byteLength(token, "utf8") < 32) throw new Error("INTERNAL_SERVICE_TOKEN must be at least 32 bytes");
-  if (Buffer.byteLength(eventToken, "utf8") < 32) throw new Error("EVENT_INGEST_TOKEN must be at least 32 bytes");
+  if (Buffer.byteLength(eventToken, "utf8") < 32) throw new Error("EVENT_INGEST_TOKEN must be at least 32 bytes");\n  if (Buffer.byteLength(adminToken, "utf8") < 32) throw new Error("ADMIN_TOKEN must be at least 32 bytes");
   const queueKey = required("QUEUE_ENCRYPTION_KEY");
   if (Buffer.from(queueKey, "base64").length !== 32) throw new Error("QUEUE_ENCRYPTION_KEY must be a base64-encoded 32-byte key");
   return {
-    PORT: port, INTERNAL_SERVICE_TOKEN: token, EVENT_INGEST_TOKEN: eventToken,
+    PORT: port, INTERNAL_SERVICE_TOKEN: token, EVENT_INGEST_TOKEN: eventToken, ADMIN_TOKEN: adminToken,
     QUEUE_DB_PATH: process.env.QUEUE_DB_PATH?.trim() || "./data/mail-queue.sqlite",
     QUEUE_ENCRYPTION_KEY: queueKey, SMTP_HOST: required("SMTP_HOST"), SMTP_PORT: smtpPort,
     SMTP_SECURE: process.env.SMTP_SECURE === "true", SMTP_USER: required("SMTP_USER"),
@@ -100,6 +100,27 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
     if (request.method === "GET" && request.url === "/v1/suppressions") {
       if (!authorized(request, env.INTERNAL_SERVICE_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
       sendJson(response, 200, { suppressions: queue.suppressionStats() }); return;
+    }
+    if (request.method === "GET" && request.url?.startsWith("/v1/admin/")) {
+      if (!authorized(request, env.ADMIN_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
+      const url = new URL(request.url, "http://127.0.0.1");
+      const limitText = url.searchParams.get("limit") ?? "50";
+      const offsetText = url.searchParams.get("offset") ?? "0";
+      if (!/^\\d{1,3}$/.test(limitText) || !/^\\d{1,6}$/.test(offsetText)) {
+        sendJson(response, 400, { error: "invalid_pagination" }); return;
+      }
+      const limit = Math.max(1, Math.min(100, Number(limitText)));
+      const offset = Math.min(100_000, Number(offsetText));
+      if (url.pathname === "/v1/admin/queue") {
+        sendJson(response, 200, { queue: queue.stats(), items: queue.listQueue(limit, offset), limit, offset }); return;
+      }
+      if (url.pathname === "/v1/admin/dead-letters") {
+        sendJson(response, 200, { items: queue.listDeadLetters(limit, offset), limit, offset }); return;
+      }
+      if (url.pathname === "/v1/admin/suppressions") {
+        sendJson(response, 200, { summary: queue.suppressionStats(), items: queue.listSuppressions(limit, offset), limit, offset }); return;
+      }
+      sendJson(response, 404, { error: "not_found" }); return;
     }
     if (request.method !== "POST" || !["/v1/deliveries", "/v1/events", "/v1/mta-events", "/v1/arf-events"].includes(request.url ?? "")) {
       sendJson(response, 404, { error: "not_found" }); return;
