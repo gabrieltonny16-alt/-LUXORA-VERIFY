@@ -29,15 +29,18 @@
 - Dedicated production TypeScript build configuration and container build definition.
 
 ## Verification evidence
-The local SMTP simulator and existing LUXORA MAIL tests passed in GitHub Actions run
-[44995517037](https://github.com/gabrieltonny16-alt/-LUXORA-VERIFY/actions/runs/44995517037)
-on commit `5ed5edae1cef2343075551fa0dfc2ccc6c978266`.
+GitHub Actions run [#216](https://github.com/gabrieltonny16-alt/-LUXORA-VERIFY/actions/runs/45013114746)
+completed successfully on commit
+[0af85a137305b7a0afb04a5f0b1800506248ed17](https://github.com/gabrieltonny16-alt/-LUXORA-VERIFY/commit/0af85a137305b7a0afb04a5f0b1800506248ed17).
 
-The real-Postfix integration test and its loopback-only CI setup have now been added to the
-workflow. They are **not verified until the new GitHub Actions run completes successfully**.
-A passing Postfix CI test will prove local Postfix SMTP submission, Postfix-generated DSN
-creation, envelope-ID preservation, and local authenticated suppression handling. It will not
-prove public MX routing or delivery to external inboxes.
+Both CI jobs passed:
+- `verify-core`: TypeScript check and core tests.
+- `luxora-mail`: loopback-only Postfix installation, LUXORA MAIL type-check, queue and SMTP
+  tests, actual local Postfix-generated DSN integration, and production TypeScript build.
+
+The Postfix test proves local SMTP submission, Postfix-generated DSN creation, envelope-ID
+preservation, and authenticated local suppression handling. It does **not** prove public MX
+routing or delivery to external inboxes.
 
 ## Not yet operational
 - A LUXORA-operated production Postfix host is not provisioned. The CI Postfix instance is
@@ -54,10 +57,10 @@ prove public MX routing or delivery to external inboxes.
 - Project provisioning, API-key issuance/revocation, and global/project rate limits remain required.
 
 ## Next engineering gates
-1. Pass the real-Postfix CI integration test and inspect its logs.
-2. Connect the DSN receiver to a LUXORA-operated Postfix host and prove DSN support using controlled test addresses.
-3. Implement a separate authenticated ARF complaint receiver and operational suppression review.
-4. Add operator visibility and safe dead-letter review/replay controls.
+1. Correct delivery-state semantics so queue acceptance is not recorded as final inbox delivery.
+2. Implement a separate authenticated ARF complaint receiver and operational suppression review.
+3. Add operator visibility and safe dead-letter review/replay controls.
+4. Connect the DSN receiver to a LUXORA-operated Postfix host and prove DSN support using controlled test addresses.
 5. Provision the mail host, Cloudflare Tunnel, and Access Service Auth only after explicit approval.
 6. Configure Worker secrets and D1, then run a reviewed end-to-end test.
 7. Build LUXORA SMS gateway and transport interfaces.
