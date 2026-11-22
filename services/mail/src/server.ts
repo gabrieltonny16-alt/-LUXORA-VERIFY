@@ -5,7 +5,8 @@ import type { Transporter } from "nodemailer";
 import { MailQueue, RecipientSuppressedError, type DeliveryEvent, type MailPayload } from "./queue.js";
 
 export interface MailEnv {
-  PORT: number; INTERNAL_SERVICE_TOKEN: string; QUEUE_DB_PATH: string; QUEUE_ENCRYPTION_KEY: string;
+  PORT: number; INTERNAL_SERVICE_TOKEN: string; EVENT_INGEST_TOKEN: string;
+  QUEUE_DB_PATH: string; QUEUE_ENCRYPTION_KEY: string;
   SMTP_HOST: string; SMTP_PORT: number; SMTP_SECURE: boolean; SMTP_USER: string; SMTP_PASSWORD: string;
   MAIL_FROM: string; MAIL_FROM_NAME: string;
 }
@@ -20,11 +21,14 @@ function loadEnv(): MailEnv {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid PORT");
   if (!Number.isInteger(smtpPort) || smtpPort < 1 || smtpPort > 65535) throw new Error("Invalid SMTP_PORT");
   const token = required("INTERNAL_SERVICE_TOKEN");
+  const eventToken = required("EVENT_INGEST_TOKEN");
   if (Buffer.byteLength(token, "utf8") < 32) throw new Error("INTERNAL_SERVICE_TOKEN must be at least 32 bytes");
+  if (Buffer.byteLength(eventToken, "utf8") < 32) throw new Error("EVENT_INGEST_TOKEN must be at least 32 bytes");
   const queueKey = required("QUEUE_ENCRYPTION_KEY");
   if (Buffer.from(queueKey, "base64").length !== 32) throw new Error("QUEUE_ENCRYPTION_KEY must be a base64-encoded 32-byte key");
   return {
-    PORT: port, INTERNAL_SERVICE_TOKEN: token, QUEUE_DB_PATH: process.env.QUEUE_DB_PATH?.trim() || "./data/mail-queue.sqlite",
+    PORT: port, INTERNAL_SERVICE_TOKEN: token, EVENT_INGEST_TOKEN: eventToken,
+    QUEUE_DB_PATH: process.env.QUEUE_DB_PATH?.trim() || "./data/mail-queue.sqlite",
     QUEUE_ENCRYPTION_KEY: queueKey, SMTP_HOST: required("SMTP_HOST"), SMTP_PORT: smtpPort,
     SMTP_SECURE: process.env.SMTP_SECURE === "true", SMTP_USER: required("SMTP_USER"),
     SMTP_PASSWORD: required("SMTP_PASSWORD"), MAIL_FROM: required("MAIL_FROM"),
@@ -99,10 +103,13 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
     if (request.method !== "POST" || !["/v1/deliveries", "/v1/events"].includes(request.url ?? "")) {
       sendJson(response, 404, { error: "not_found" }); return;
     }
-    if (!authorized(request, env.INTERNAL_SERVICE_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
+    const isEvent = request.url === "/v1/events";
+    if (!authorized(request, isEvent ? env.EVENT_INGEST_TOKEN : env.INTERNAL_SERVICE_TOKEN)) {
+      sendJson(response, 401, { error: "unauthorized" }); return;
+    }
     let payload: unknown;
     try { payload = await readBody(request); } catch { sendJson(response, 400, { error: "invalid_request" }); return; }
-    if (request.url === "/v1/events") {
+    if (isEvent) {
       if (!validDeliveryEvent(payload)) { sendJson(response, 400, { error: "invalid_event" }); return; }
       const result = queue.recordDeliveryEvent(payload);
       sendJson(response, 202, { accepted: true, duplicate: result.duplicate, suppressed: result.suppressed });
