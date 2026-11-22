@@ -102,7 +102,7 @@ test("local SMTP submission -> RFC DSN -> authenticated endpoint -> suppression"
   const token = "local-integration-internal-token-32-bytes";
   const eventToken = "local-integration-event-token-32-bytes";
   const env: MailEnv = {
-    PORT: 0, INTERNAL_SERVICE_TOKEN: token, EVENT_INGEST_TOKEN: eventToken,
+    PORT: 0, INTERNAL_SERVICE_TOKEN: token, EVENT_INGEST_TOKEN: eventToken,\n    ADMIN_TOKEN: "local-integration-admin-token-32-bytes",
     QUEUE_DB_PATH: ":memory:", QUEUE_ENCRYPTION_KEY: queueKey,
     SMTP_HOST: "127.0.0.1", SMTP_PORT: mta.port, SMTP_SECURE: false,
     SMTP_USER: "", SMTP_PASSWORD: "", MAIL_FROM: "no-reply@luxora.test",
