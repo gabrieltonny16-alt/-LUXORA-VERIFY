@@ -4,12 +4,13 @@ import { randomBytes } from "node:crypto";
 import { MailQueue } from "../src/queue.js";
 import { createMailServer, type MailEnv } from "../src/server.js";
 
-const token = "test-internal-token-that-is-at-least-32-bytes";
+const token = "x".repeat(40);
+const eventToken = "y".repeat(40);
 const env: MailEnv = {
-  PORT: 8788, INTERNAL_SERVICE_TOKEN: token, QUEUE_DB_PATH: ":memory:",
-  QUEUE_ENCRYPTION_KEY: randomBytes(32).toString("base64"), SMTP_HOST: "localhost",
-  SMTP_PORT: 587, SMTP_SECURE: false, SMTP_USER: "test", SMTP_PASSWORD: "test",
-  MAIL_FROM: "verify@example.test", MAIL_FROM_NAME: "LUXORA VERIFY",
+  PORT: 8788, INTERNAL_SERVICE_TOKEN: token, EVENT_INGEST_TOKEN: eventToken,
+  QUEUE_DB_PATH: ":memory:", QUEUE_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
+  SMTP_HOST: "localhost", SMTP_PORT: 587, SMTP_SECURE: false, SMTP_USER: "test",
+  SMTP_PASSWORD: "test", MAIL_FROM: "verify@example.test", MAIL_FROM_NAME: "LUXORA VERIFY",
 };
 const payload = { destination: "person@example.com", code: "123456", purpose: "sign_up" as const };
 
@@ -60,18 +61,22 @@ test("complaints suppress and take precedence over hard-bounce reason", () => {
   } finally { queue.close(); }
 });
 
-test("delivery event endpoint requires authentication and validates payloads", async () => {
+test("delivery event endpoint requires its own token and validates payloads", async () => {
   await withServer(async baseUrl => {
     const body = JSON.stringify({ eventId: "provider-event-0005", type: "complaint", recipient: "person@example.com" });
     const unauthorized = await fetch(`${baseUrl}/v1/events`, { method: "POST", headers: { "content-type": "application/json" }, body });
     assert.equal(unauthorized.status, 401);
+    const wrongToken = await fetch(`${baseUrl}/v1/events`, {
+      method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body,
+    });
+    assert.equal(wrongToken.status, 401);
     const invalid = await fetch(`${baseUrl}/v1/events`, {
-      method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      method: "POST", headers: { authorization: `Bearer ${eventToken}`, "content-type": "application/json" },
       body: JSON.stringify({ eventId: "short", type: "complaint", recipient: "person@example.com" }),
     });
     assert.equal(invalid.status, 400);
     const accepted = await fetch(`${baseUrl}/v1/events`, {
-      method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body,
+      method: "POST", headers: { authorization: `Bearer ${eventToken}`, "content-type": "application/json" }, body,
     });
     assert.equal(accepted.status, 202);
     assert.deepEqual(await accepted.json(), { accepted: true, duplicate: false, suppressed: true });
