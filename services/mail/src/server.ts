@@ -103,7 +103,8 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
     if (request.method !== "POST" || !["/v1/deliveries", "/v1/events", "/v1/mta-events"].includes(request.url ?? "")) {
       sendJson(response, 404, { error: "not_found" }); return;
     }
-    const isEvent = request.url === "/v1/events";\n    const isMtaEvent = request.url === "/v1/mta-events";
+    const isEvent = request.url === "/v1/events";
+    const isMtaEvent = request.url === "/v1/mta-events";
     if (!authorized(request, isEvent || isMtaEvent ? env.EVENT_INGEST_TOKEN : env.INTERNAL_SERVICE_TOKEN)) {
       sendJson(response, 401, { error: "unauthorized" }); return;
     }
@@ -152,7 +153,9 @@ async function deliverOne(queue: MailQueue, transport: Pick<Transporter, "sendMa
   try {
     const message = messageFor(item.payload);
     await transport.sendMail({
-      from: { name: env.MAIL_FROM_NAME, address: env.MAIL_FROM }, to: item.payload.destination,\n      envelope: { from: env.BOUNCE_ADDRESS, to: [item.payload.destination] },\n      dsn: { id: item.id, return: "headers", notify: ["failure", "delay"], recipient: item.payload.destination },
+      from: { name: env.MAIL_FROM_NAME, address: env.MAIL_FROM }, to: item.payload.destination,
+      envelope: { from: env.BOUNCE_ADDRESS, to: [item.payload.destination] },
+      dsn: { id: item.id, return: "headers", notify: ["failure", "delay"], recipient: item.payload.destination },
       subject: message.subject, text: message.text, html: message.html,
       headers: { "X-Luxora-Message-Class": "verification", "X-Luxora-Delivery-Id": item.id },
     });
