@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 import { MailQueue, RecipientSuppressedError, UnknownDeliveryEventError, type DeliveryEvent, type MailPayload } from "./queue.js";
@@ -184,6 +185,6 @@ export async function startMailService(): Promise<void> {
   const shutdown = () => { clearInterval(poll); server.close(); queue.close(); };
   process.once("SIGINT", shutdown); process.once("SIGTERM", shutdown);
 }
-if (process.env.NODE_ENV !== "test") {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   startMailService().catch(() => { process.stderr.write("LUXORA MAIL failed to start; check private configuration.\n"); process.exitCode = 1; });
 }
