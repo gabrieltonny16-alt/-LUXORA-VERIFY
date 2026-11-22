@@ -31,7 +31,7 @@
 - Authorized telecom interconnection for real SMS does not exist.
 - Production Worker secrets, DNS, private networking, remote D1, and deployments are not provisioned.
 - Project provisioning, API-key issuance/revocation, and global/project rate limits remain required.
-- CI results for the latest queue and gateway changes must be checked before treating them as verified.
+- GitHub Actions verified the core type-check/tests and LUXORA MAIL type-check/queue tests/build successfully on the gateway implementation commit `9af972db42db0db3a18f84b1d183eca28c6d2efa`. This confirms repository checks only; it does not verify a deployed tunnel, SMTP host, or real delivery.
 
 ## Next engineering gates
 1. Verify LUXORA MAIL queue and gateway tests, type-checks, and container build in CI.
