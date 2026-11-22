@@ -126,13 +126,18 @@ recipient address in the suppression table.
 
 - `GET /health`: process health.
 - `GET /v1/queue`: authenticated queue counters (queued, processing, sent, dead).
-- `GET /v1/suppressions`: authenticated aggregate suppression/event counters.\n- `GET /v1/admin/queue`: private admin-token view of queue metadata and aggregate counters.\n- `GET /v1/admin/dead-letters`: private admin-token dead-letter metadata.\n- `GET /v1/admin/suppressions`: private admin-token suppression references (truncated HMAC fingerprints), reasons, and aggregate counts.
+- `GET /v1/suppressions`: authenticated aggregate suppression/event counters.
+- `GET /v1/admin/queue`: private admin-token view of queue metadata and aggregate counters.
+- `GET /v1/admin/dead-letters`: private admin-token dead-letter metadata.
+- `GET /v1/admin/suppressions`: private admin-token suppression references (truncated HMAC fingerprints), reasons, and aggregate counts.
 - `POST /v1/deliveries`: authenticated, idempotent queue submission.
 - `POST /v1/events`: authenticated event intake for trusted internal adapters.
 - `POST /v1/mta-events`: authenticated DSN intake with delivery-ID/recipient matching.
 - `POST /v1/arf-events`: private authenticated complaint intake; requires a trusted upstream feedback-loop route.
 
-The read-only operations API exposes delivery IDs, states, attempts, timestamps, and safe error codes only. It never returns OTP payloads, recipient addresses, SMTP credentials, or full recipient fingerprints. Pagination is capped at 100 records per request. Suppression release and dead-letter replay are deliberately not exposed yet; they require audited, explicitly confirmed workflows.\n\nThe service reports durable queue acceptance to LUXORA VERIFY (the API audit label
+The read-only operations API exposes delivery IDs, states, attempts, timestamps, and safe error codes only. It never returns OTP payloads, recipient addresses, SMTP credentials, or full recipient fingerprints. Pagination is capped at 100 records per request. Suppression release and dead-letter replay are deliberately not exposed yet; they require audited, explicitly confirmed workflows.
+
+The service reports durable queue acceptance to LUXORA VERIFY (the API audit label
 `sent` means accepted by the internal delivery queue, not confirmed inbox delivery).
 
 ## Self-operated mail infrastructure
