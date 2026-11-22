@@ -8,6 +8,8 @@ export interface InternalService {
 export interface InternalDeliveryConfig {
   mail: InternalService;
   sms: InternalService;
+  mailToken: string;
+  smsToken: string;
 }
 
 /**
@@ -25,11 +27,12 @@ export class InternalDeliveryRouter implements OtpDelivery {
     purpose: OtpPurpose;
   }): Promise<"sent" | "failed" | "unknown"> {
     const service = input.channel === "email" ? this.services.mail : this.services.sms;
+    const token = input.channel === "email" ? this.services.mailToken : this.services.smsToken;
     const path = input.channel === "email" ? "mail" : "sms";
     try {
       const result = await service.fetch(new Request(`https://${path}.internal/v1/deliveries`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
         body: JSON.stringify({
           destination: input.destination,
           code: input.code,
