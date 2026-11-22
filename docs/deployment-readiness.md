@@ -12,31 +12,33 @@
   successful or permanently failed delivery.
 - Queue tests covering persistence across restart, duplicate challenge IDs, payload mismatch,
   and encryption-key validation.
-- Container build definition and dedicated CI type-check, test, and build steps.
+- Private LUXORA MAIL gateway Worker with separate gateway/origin credentials, strict
+  HTTPS-origin allowlisting, request validation, redirect refusal, and mandatory Cloudflare
+  Access Service Auth credentials.
+- Cloudflare service-only gateway configuration and a root Worker service binding declaration.
+- Gateway tests for authentication, forwarding, Access enforcement, URL restrictions, and
+  upstream failure handling.
+- Container build definition and CI type-check, test, and build steps.
 
 ## Not yet operational
-- The SMTP host is not provisioned or verified; no sender domain, SPF, DKIM, DMARC,
+- Gateway source/configuration has not been deployed; no tunnel or Access Service Auth policy exists.
+- The root D1 database ID is a placeholder; database creation and migration have not occurred.
+- The mail host is not provisioned or verified; no sender domain, SPF, DKIM, DMARC,
   PTR/reverse DNS, TLS certificates, or delivery reputation has been established.
 - Bounce/complaint processing, suppression lists, operator visibility, and dead-letter replay
   are not implemented.
-- LUXORA MAIL is a Node.js service. The Cloudflare Worker service binding cannot call that
-  process directly; a private authenticated gateway or supported private network bridge is
-  still required.
 - LUXORA SMS gateway and transport adapters are not implemented.
 - Authorized telecom interconnection for real SMS does not exist.
-- Worker service bindings, runtime secrets, remote D1 database, migrations, and deployment
-  are not provisioned.
-- Project provisioning, API-key issuance/revocation, and global/project rate limits remain
-  required.
-- CI results for the latest queue implementation must be checked before treating it as verified.
+- Production Worker secrets, DNS, private networking, remote D1, and deployments are not provisioned.
+- Project provisioning, API-key issuance/revocation, and global/project rate limits remain required.
+- CI results for the latest queue and gateway changes must be checked before treating them as verified.
 
 ## Next engineering gates
-1. Verify LUXORA MAIL type-check, queue tests, and container build in CI.
-2. Implement bounce/complaint processing, suppression, operator visibility, and safe dead-letter handling.
-3. Build the private gateway connecting the Worker service binding to the self-operated mail service.
-4. Build LUXORA SMS gateway and its transport interfaces.
-5. Add project provisioning, scoped API keys, revocation, and rate limits.
-6. Review D1 atomicity and end-to-end delivery idempotency.
-7. Test locally without sending real messages.
-8. Obtain explicit approval before provisioning remote resources, changing DNS, configuring
-   production secrets, enabling external routes, or deploying.
+1. Verify LUXORA MAIL queue and gateway tests, type-checks, and container build in CI.
+2. Implement mail bounce/complaint processing, suppression, operator visibility, and safe dead-letter handling.
+3. Provision the mail host, Cloudflare Tunnel, and Access Service Auth only after explicit approval.
+4. Configure the Worker secrets and D1 database, then run a reviewed end-to-end test without sending real messages.
+5. Build LUXORA SMS gateway and transport interfaces.
+6. Add project provisioning, scoped API keys, revocation, and rate limits.
+7. Review D1 atomicity and end-to-end delivery idempotency.
+8. Obtain explicit approval before paid resources, DNS changes, external routes, production secrets, or deployment.
