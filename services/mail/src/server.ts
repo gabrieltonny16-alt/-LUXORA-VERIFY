@@ -22,9 +22,11 @@ function loadEnv(): MailEnv {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid PORT");
   if (!Number.isInteger(smtpPort) || smtpPort < 1 || smtpPort > 65535) throw new Error("Invalid SMTP_PORT");
   const token = required("INTERNAL_SERVICE_TOKEN");
-  const eventToken = required("EVENT_INGEST_TOKEN");\n  const adminToken = required("ADMIN_TOKEN");
+  const eventToken = required("EVENT_INGEST_TOKEN");
+  const adminToken = required("ADMIN_TOKEN");
   if (Buffer.byteLength(token, "utf8") < 32) throw new Error("INTERNAL_SERVICE_TOKEN must be at least 32 bytes");
-  if (Buffer.byteLength(eventToken, "utf8") < 32) throw new Error("EVENT_INGEST_TOKEN must be at least 32 bytes");\n  if (Buffer.byteLength(adminToken, "utf8") < 32) throw new Error("ADMIN_TOKEN must be at least 32 bytes");
+  if (Buffer.byteLength(eventToken, "utf8") < 32) throw new Error("EVENT_INGEST_TOKEN must be at least 32 bytes");
+  if (Buffer.byteLength(adminToken, "utf8") < 32) throw new Error("ADMIN_TOKEN must be at least 32 bytes");
   const queueKey = required("QUEUE_ENCRYPTION_KEY");
   if (Buffer.from(queueKey, "base64").length !== 32) throw new Error("QUEUE_ENCRYPTION_KEY must be a base64-encoded 32-byte key");
   return {
@@ -215,10 +217,12 @@ export async function startMailService(): Promise<void> {
     try { await deliverOne(queue, transport, env); } finally { draining = false; }
   }, 1000);
   poll.unref();
-  server.listen(env.PORT, "127.0.0.1", () => process.stdout.write(`LUXORA MAIL listening on 127.0.0.1:${env.PORT}\n`));
+  server.listen(env.PORT, "127.0.0.1", () => process.stdout.write(`LUXORA MAIL listening on 127.0.0.1:${env.PORT}
+`));
   const shutdown = () => { clearInterval(poll); server.close(); queue.close(); };
   process.once("SIGINT", shutdown); process.once("SIGTERM", shutdown);
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  startMailService().catch(() => { process.stderr.write("LUXORA MAIL failed to start; check private configuration.\n"); process.exitCode = 1; });
+  startMailService().catch(() => { process.stderr.write("LUXORA MAIL failed to start; check private configuration.
+"); process.exitCode = 1; });
 }
