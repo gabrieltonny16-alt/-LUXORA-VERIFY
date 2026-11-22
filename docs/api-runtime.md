@@ -1,32 +1,54 @@
 # HTTP runtime and adapter contract
 
-The first HTTP layer is a portable Web-standard `Request`/`Response` handler in `src/http/handler.ts`. It is deliberately independent of Cloudflare bindings and can be hosted by a Worker adapter later.
+The HTTP layer is a portable Web-standard Request/Response handler. The Worker entry
+point injects D1 persistence and two first-party private service bindings.
 
-## Required configuration
+## Required runtime configuration
 
-- `apiKeyPepper`: at least 32 bytes; used to HMAC project API keys before lookup.
-- `otpPepper`: at least 32 bytes; used by the OTP HMAC implementation.
-- `destinationFingerprintPepper`: at least 32 bytes; used to create non-reversible destination lookup fingerprints.
-- `destinationEncryptionKey`: at least 32 bytes; used for AES-GCM encryption of delivery destinations.
-- A repository implementation with atomic operations.
-- A delivery implementation. The repository-only stage uses test delivery in tests; no live provider is configured.
+- D1 database binding: `DB`.
+- Private first-party mail service binding: `MAIL_SERVICE`.
+- Private first-party SMS service binding: `SMS_SERVICE`.
+- `API_KEY_PEPPER`: at least 32 bytes.
+- `OTP_PEPPER`: at least 32 bytes.
+- `DESTINATION_FINGERPRINT_PEPPER`: at least 32 bytes.
+- `DESTINATION_ENCRYPTION_KEY`: at least 32 bytes.
 
-All secrets belong in runtime secret storage, never source control, migrations, logs, or client applications.
+All secrets belong in runtime secret storage, never source control, migrations, logs,
+or client applications.
+
+## First-party delivery contract
+
+The Worker routes email jobs to the private mail service and SMS jobs to the private
+SMS service. Both services receive a POST to `/v1/deliveries` with JSON containing
+`destination`, `code`, and `purpose`.
+
+- HTTP 200 or 202 means the downstream service accepted the delivery job.
+- HTTP 4xx means the downstream service rejected the job.
+- HTTP 5xx or a transport exception is treated as unknown because acceptance may
+  have happened before the connection failed.
+
+The services must add durable job storage and idempotency before automatic retries
+are enabled. Do not log OTP values, full destinations, API keys, or transport secrets.
+The service bindings are private Cloudflare service-to-service connections, not public
+client endpoints.
 
 ## Repository atomicity requirements
 
-A production repository must implement these operations with database-enforced conditions/transactions:
+A production repository must implement these operations with database-enforced
+conditions/transactions:
 
-- `createChallengeIfAllowed`: atomically enforce the resend cooldown for the same project, destination fingerprint, and purpose before inserting.
-- `incrementFailedAttempt`: update only when the stored attempt count equals `expectedAttempts`, the challenge is unconsumed, and it has not expired.
-- `consumeChallenge`: update only when the stored attempt count equals `expectedAttempts`, the challenge is unconsumed, and it has not expired.
+- `createChallengeIfAllowed`: atomically enforce resend cooldown for the same
+  project, destination fingerprint, and purpose before inserting.
+- `incrementFailedAttempt`: update only when the stored attempt count equals the
+  expected count, the challenge is unconsumed, and it has not expired.
+- `consumeChallenge`: update only when the stored attempt count equals the expected
+  count, the challenge is unconsumed, and it has not expired.
 
-A plain read-then-write implementation is not sufficient for these methods. The D1 adapter must use conditional SQL updates and/or transactions to prevent concurrent verification races.
+A plain read-then-write implementation is not sufficient.
 
-## Delivery behavior
+## Current boundary
 
-The API sends a code only through the injected delivery adapter. A failed or uncertain delivery is never reported as successful. Delivery errors are normalized; provider credentials and OTP values must not appear in logs or API responses.
-
-## Current implementation boundary
-
-The HTTP handler and its tests are implemented, but this is not yet a deployable service. A durable database adapter, project provisioning/key issuance, global and per-project rate limiting, delivery providers, runtime entry point, and deployment configuration remain future steps. No remote database, provider, secret, or deployment is configured by these files.
+The API and first-party routing adapter are committed. The mail and SMS services,
+their queues and transports, service bindings, project provisioning, API-key
+management, rate limits, remote database, and deployment are not yet operational.
+No live messages or paid services have been activated.
