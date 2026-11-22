@@ -32,7 +32,7 @@ function loadEnv(): MailEnv {
     QUEUE_ENCRYPTION_KEY: queueKey, SMTP_HOST: required("SMTP_HOST"), SMTP_PORT: smtpPort,
     SMTP_SECURE: process.env.SMTP_SECURE === "true", SMTP_USER: required("SMTP_USER"),
     SMTP_PASSWORD: required("SMTP_PASSWORD"), MAIL_FROM: required("MAIL_FROM"),
-    MAIL_FROM_NAME: process.env.MAIL_FROM_NAME?.trim() || "LUXORA VERIFY", BOUNCE_ADDRESS: required("BOUNCE_ADDRESS"), BOUNCE_ADDRESS: required("BOUNCE_ADDRESS"),
+    MAIL_FROM_NAME: process.env.MAIL_FROM_NAME?.trim() || "LUXORA VERIFY", BOUNCE_ADDRESS: required("BOUNCE_ADDRESS"),
   };
 }
 function readBody(request: IncomingMessage): Promise<unknown> {
