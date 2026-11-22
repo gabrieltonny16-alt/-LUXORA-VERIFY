@@ -42,7 +42,7 @@ backend is deliberately introduced.
   Body: `{ "destination": "person@example.com", "code": "123456", "purpose": "sign_up" }`.
   Header: `Idempotency-Key: <challenge-id>`.
 
-The service currently reports queue acceptance to LUXORA VERIFY. Final delivery,
+The service currently reports durable queue acceptance to LUXORA VERIFY (the API audit\nlabel `sent` means accepted by the internal delivery queue, not confirmed inbox delivery). Final delivery,
 bounces, complaints, suppression lists, operator dashboards, and manual dead-letter
 replay are not yet implemented.
 
