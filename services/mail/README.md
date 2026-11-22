@@ -123,3 +123,22 @@ end-to-end deliverability tests are complete.
 
 Do not use a personal mailbox as a bulk sender. Do not send unsolicited email. Never
 log OTP values, full destinations, SMTP credentials, or message bodies.
+
+## Local SMTP and bounce integration test
+
+Run `npm test` from this directory. The `local-mta.integration.test.ts` test starts
+a temporary SMTP server bound only to loopback and exercises the actual LUXORA MAIL
+delivery worker. The test MTA advertises the DSN extension, captures the SMTP envelope
+ID and failure-notification request, and accepts a test message without connecting to
+the internet.
+
+The test then creates an RFC 3464 permanent-failure report and sends the parsed event
+through the real authenticated `/v1/mta-events` HTTP route. It verifies delivery-ID
+and recipient matching, duplicate-event handling, hard-bounce suppression, and refusal
+of future sends to the suppressed recipient. All addresses use the reserved
+`example.test` domain and the OTP is a disposable test value.
+
+This is a protocol-level local simulation, not a real Postfix installation or a test
+of external mailbox delivery. It does not require a domain, DNS, SMTP credentials,
+public ports, or paid services. A separate Postfix deployment and real controlled
+mailbox test will still be required before production.
