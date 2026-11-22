@@ -43,5 +43,7 @@ jobs:
         run: npm install
       - name: Type-check LUXORA MAIL
         run: npm run typecheck
+      - name: Test LUXORA MAIL queue
+        run: npm test
       - name: Build LUXORA MAIL
         run: npm run build
