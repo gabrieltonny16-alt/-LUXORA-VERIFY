@@ -1,0 +1,19 @@
+{
+  "name": "@luxora-verify/mail",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "nodemailer": "^7.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "@types/nodemailer": "^6.4.17",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
