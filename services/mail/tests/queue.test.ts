@@ -16,6 +16,7 @@ test("mail queue persists encrypted deliveries and deduplicates challenge IDs", 
     const accepted = first.enqueue("challenge-idempotency-001", payload);
     assert.equal(accepted.created, true);
     assert.equal(accepted.status, "queued");
+    assert.deepEqual(first.stats(), { queued: 1, processing: 0, sent: 0, dead: 0 });
     const duplicate = first.enqueue("challenge-idempotency-001", payload);
     assert.equal(duplicate.created, false);
     assert.equal(duplicate.id, accepted.id);
