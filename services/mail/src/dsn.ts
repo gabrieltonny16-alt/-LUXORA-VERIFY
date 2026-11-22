@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { simpleParser, type ParsedMail } from "mailparser";
 import type { DeliveryEvent } from "./queue.js";
 
 export interface ParsedDsn { deliveryId: string; event: DeliveryEvent; }
@@ -15,6 +14,42 @@ function parseFields(block: string): Map<string, string> {
   }
   return fields;
 }
+function decodePart(value: string, encoding: string | undefined): string {
+  const mode = encoding?.toLowerCase().trim();
+  if (mode === "base64") return Buffer.from(value.replace(/\s/g, ""), "base64").toString("utf8");
+  if (mode === "quoted-printable") {
+    const decoded = value.replace(/=\r?\n/g, "").replace(/=([0-9a-f]{2})/gi,
+      (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+    return Buffer.from(decoded, "binary").toString("utf8");
+  }
+  if (!mode || ["7bit", "8bit", "binary"].includes(mode)) return value;
+  throw new Error("Unsupported DSN transfer encoding");
+}
+function deliveryStatusPart(raw: Buffer): string | null {
+  const message = raw.toString("utf8");
+  const separator = message.search(/\r?\n\r?\n/);
+  if (separator < 0) return null;
+  const topHeaders = parseFields(message.slice(0, separator));
+  const contentType = topHeaders.get("content-type") ?? "";
+  if (!/^multipart\/report\b/i.test(contentType) || !/report-type\s*=\s*"?delivery-status"?/i.test(contentType)) return null;
+  const boundaryMatch = contentType.match(/boundary\s*=\s*(?:"([^"]+)"|([^;\s]+))/i);
+  const boundary = boundaryMatch?.[1] ?? boundaryMatch?.[2];
+  if (!boundary || boundary.length > 70) return null;
+  const body = message.slice(separator).replace(/^\r?\n\r?\n/, "");
+  const parts = body.split(`--${boundary}`).slice(1).filter(part => !part.startsWith("--"));
+  const matches: string[] = [];
+  for (let part of parts) {
+    part = part.replace(/^\r?\n/, "");
+    const headerBreak = part.match(/\r?\n\r?\n/);
+    if (!headerBreak || headerBreak.index === undefined) continue;
+    const headers = parseFields(part.slice(0, headerBreak.index));
+    const type = (headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (type !== "message/delivery-status") continue;
+    const content = part.slice(headerBreak.index + headerBreak[0].length).replace(/\r?\n$/, "");
+    matches.push(decodePart(content, headers.get("content-transfer-encoding")));
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
 function addressFromRecipient(value: string | undefined): string | null {
   if (!value) return null;
   const separator = value.indexOf(";");
@@ -24,16 +59,15 @@ function addressFromRecipient(value: string | undefined): string | null {
 export async function parseDeliveryStatusReport(raw: Buffer | string): Promise<ParsedDsn | null> {
   const rawBuffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw, "utf8");
   if (rawBuffer.length === 0 || rawBuffer.length > 256 * 1024) throw new Error("DSN message size is invalid");
-  const parsed = await simpleParser(rawBuffer) as ParsedMail;
-  const reports = parsed.attachments.filter(part => part.contentType.toLowerCase() === "message/delivery-status");
-  if (reports.length !== 1 || !reports[0]) return null;
-  const reportText = reports[0].content.toString("utf8");
-  const blocks = reportText.split(/\r?\n\s*\r?\n/).map(block => block.trim()).filter(Boolean);
+  const reportText = deliveryStatusPart(rawBuffer);
+  if (!reportText) return null;
+  const blocks = reportText.split(/\r?\n[ \t]*\r?\n/).map(block => block.trim()).filter(Boolean);
   if (blocks.length < 2) return null;
-  const deliveryId = blocks.map(parseFields).map(fields => fields.get("original-envelope-id"))
+  const parsedBlocks = blocks.map(parseFields);
+  const deliveryId = parsedBlocks.map(fields => fields.get("original-envelope-id"))
     .find(value => value !== undefined)?.replace(/^<|>$/g, "").trim();
   if (!deliveryId || !/^[a-f0-9]{32}$/i.test(deliveryId)) return null;
-  const recipients = blocks.map(parseFields).filter(fields => fields.has("final-recipient"));
+  const recipients = parsedBlocks.filter(fields => fields.has("final-recipient"));
   if (recipients.length !== 1 || !recipients[0]) return null;
   const recipientFields = recipients[0];
   const recipient = addressFromRecipient(recipientFields.get("final-recipient"));
