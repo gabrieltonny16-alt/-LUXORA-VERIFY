@@ -8,6 +8,7 @@ point injects D1 persistence and two first-party private service bindings.
 - D1 database binding: `DB`.
 - Private first-party mail service binding: `MAIL_SERVICE`.
 - Private first-party SMS service binding: `SMS_SERVICE`.
+- `MAIL_SERVICE_TOKEN` and `SMS_SERVICE_TOKEN`: independent 32-byte-or-longer service credentials.
 - `API_KEY_PEPPER`: at least 32 bytes.
 - `OTP_PEPPER`: at least 32 bytes.
 - `DESTINATION_FINGERPRINT_PEPPER`: at least 32 bytes.
