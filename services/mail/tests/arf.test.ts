@@ -27,7 +27,8 @@ function report(feedbackType = "abuse", recipient = "person@example.test"): stri
     "Original-Rcpt-To: rfc822; " + recipient,
     "--luxora-arf-test--",
     "",
-  ].join("\r\n");
+  ].join("\r
+");
 }
 
 test("parses a single-recipient RFC 5965 abuse report as a complaint", async () => {
@@ -43,12 +44,15 @@ test("accepts supported complaint feedback types and ignores non-complaint repor
   assert.equal((await parseAbuseFeedbackReport(report("fraud")))?.event.type, "complaint");
   assert.equal((await parseAbuseFeedbackReport(report("virus")))?.event.type, "complaint");
   assert.equal(await parseAbuseFeedbackReport(report("not-spam")), null);
-  assert.equal(await parseAbuseFeedbackReport("Subject: no report\r\n\r\nhello"), null);
+  assert.equal(await parseAbuseFeedbackReport("Subject: no report\r
+\r
+hello"), null);
 });
 
 test("rejects multiple recipients, malformed addresses, and oversized reports", async () => {
   const multi = report().replace("Original-Rcpt-To: rfc822; person@example.test",
-    "Original-Rcpt-To: rfc822; person@example.test\r\nOriginal-Rcpt-To: rfc822; other@example.test");
+    "Original-Rcpt-To: rfc822; person@example.test\r
+Original-Rcpt-To: rfc822; other@example.test");
   assert.equal(await parseAbuseFeedbackReport(multi), null);
   assert.equal(await parseAbuseFeedbackReport(report("abuse", "not-an-email")), null);
   await assert.rejects(() => parseAbuseFeedbackReport(Buffer.alloc(256 * 1024 + 1)), /size/);
@@ -59,7 +63,8 @@ test("authenticated ARF intake records a complaint, suppresses the recipient, an
   const queue = new MailQueue(":memory:", queueKey);
   const token = "arf-integration-event-token-at-least-32-bytes";
   const env: MailEnv = {
-    PORT: 0, INTERNAL_SERVICE_TOKEN: "arf-integration-internal-token-32-bytes",\n    ADMIN_TOKEN: "arf-integration-admin-token-at-least-32-bytes",
+    PORT: 0, INTERNAL_SERVICE_TOKEN: "arf-integration-internal-token-32-bytes",
+    ADMIN_TOKEN: "arf-integration-admin-token-at-least-32-bytes",
     EVENT_INGEST_TOKEN: token, QUEUE_DB_PATH: ":memory:", QUEUE_ENCRYPTION_KEY: queueKey,
     SMTP_HOST: "127.0.0.1", SMTP_PORT: 2525, SMTP_SECURE: false, SMTP_USER: "",
     SMTP_PASSWORD: "", MAIL_FROM: "no-reply@luxora.test", MAIL_FROM_NAME: "LUXORA VERIFY",
