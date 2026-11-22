@@ -39,11 +39,38 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install and configure loopback-only Postfix
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y postfix
+          sudo postconf -e 'myhostname=mail.luxora.test'
+          sudo postconf -e 'mydomain=luxora.test'
+          sudo postconf -e 'myorigin=luxora.test'
+          sudo postconf -e 'mydestination=mail.luxora.test, localhost.luxora.test, localhost, luxora.test'
+          sudo postconf -e 'inet_interfaces=loopback-only'
+          sudo postconf -e 'inet_protocols=ipv4'
+          sudo postconf -e 'mynetworks=127.0.0.0/8'
+          sudo postconf -e 'smtpd_relay_restrictions=permit_mynetworks,reject_unauth_destination'
+          sudo postconf -e 'local_recipient_maps='
+          sudo postconf -e 'smtpd_sasl_auth_enable=no'
+          sudo sed -i '/^bounces:/d' /etc/aliases
+          echo 'bounces: runner' | sudo tee -a /etc/aliases
+          sudo newaliases
+          sudo install -o runner -g mail -m 0660 /dev/null /var/mail/runner
+          sudo service postfix restart
+          sudo postfix check
+          test "$(sudo postconf -h inet_interfaces)" = "loopback-only"
+          for attempt in $(seq 1 20); do
+            if bash -c 'echo >/dev/tcp/127.0.0.1/25' 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Postfix did not start on loopback SMTP port 25" >&2
+          exit 1
       - name: Install LUXORA MAIL dependencies
         run: npm install
       - name: Type-check LUXORA MAIL
         run: npm run typecheck
-      - name: Test LUXORA MAIL queue, DSN and local SMTP integration
-        run: npm test
+      - name: Test LUXORA MAIL queue, simulated SMTP and real Postfix DSN integration
+        run: LUXORA_POSTFIX_TEST=1 LUXORA_POSTFIX_MAILBOX=/var/mail/runner npm test
       - name: Build LUXORA MAIL
         run: npm run build
