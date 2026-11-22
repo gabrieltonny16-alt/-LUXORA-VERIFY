@@ -112,7 +112,12 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
     }
     let payload: unknown;
     try { payload = await readBody(request); } catch { sendJson(response, 400, { error: "invalid_request" }); return; }
-    if (isArfEvent) {\n      if (!validDeliveryEvent(payload) || payload.type !== "complaint") { sendJson(response, 400, { error: "invalid_complaint_event" }); return; }\n      const result = queue.recordDeliveryEvent(payload);\n      sendJson(response, 202, { accepted: true, duplicate: result.duplicate, suppressed: result.suppressed });\n      return;\n    }\n    if (isMtaEvent) {
+    if (isArfEvent) {
+      if (!validDeliveryEvent(payload) || payload.type !== "complaint") { sendJson(response, 400, { error: "invalid_complaint_event" }); return; }
+      const result = queue.recordDeliveryEvent(payload);
+      sendJson(response, 202, { accepted: true, duplicate: result.duplicate, suppressed: result.suppressed });
+      return;
+    }\n    if (isMtaEvent) {
       if (typeof payload !== "object" || payload === null || Array.isArray(payload)) { sendJson(response, 400, { error: "invalid_event" }); return; }
       const item = payload as Record<string, unknown>;
       if (typeof item.deliveryId !== "string" || !/^[a-f0-9]{32}$/i.test(item.deliveryId) || !validDeliveryEvent(item.event)) {
