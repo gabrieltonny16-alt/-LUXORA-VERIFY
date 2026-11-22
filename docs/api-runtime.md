@@ -28,7 +28,8 @@ plus an `Idempotency-Key` derived from the unique OTP challenge ID.
 
 LUXORA MAIL persists encrypted payloads in SQLite, deduplicates challenge IDs, recovers
 expired processing leases, and retries SMTP submission with bounded exponential backoff.
-Its 202 response means queue acceptance, not final inbox delivery.
+Its 202 response means queue acceptance, not final inbox delivery. LUXORA VERIFY records
+this outcome as `queued`; it must not be described as `sent` or inbox-delivered.
 
 ## Mail bounce and complaint handling
 
