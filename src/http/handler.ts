@@ -15,11 +15,11 @@ export interface VerifyRepository {
   getChallenge(id: string, projectId: string): Promise<StoredChallenge | null>;
   incrementFailedAttempt(id: string, expectedAttempts: number, now: number): Promise<boolean>;
   consumeChallenge(id: string, expectedAttempts: number, now: number): Promise<boolean>;
-  recordDelivery(id: string, status: "sent" | "failed" | "unknown"): Promise<void>;
+  recordDelivery(id: string, status: "queued" | "failed" | "unknown"): Promise<void>;
   audit(event: { projectId: string; challengeId?: string; event: string; outcome: string; at: number }): Promise<void>;
 }
 export interface OtpDelivery {
-  send(input: { channel: OtpChannel; destination: string; code: string; purpose: OtpPurpose; idempotencyKey: string }): Promise<"sent" | "failed" | "unknown">;
+  send(input: { channel: OtpChannel; destination: string; code: string; purpose: OtpPurpose; idempotencyKey: string }): Promise<"queued" | "failed" | "unknown">;
 }
 export interface VerifyConfig {
   repository: VerifyRepository; delivery: OtpDelivery; apiKeyPepper: string; otpPepper: string;
@@ -80,14 +80,14 @@ export function createVerifyHandler(config: VerifyConfig): (request: Request) =>
         };
         const created = await config.repository.createChallengeIfAllowed(challenge, timestamp);
         if (created === "cooldown") return response({ error: "try_again_later" }, 429);
-        let deliveryStatus: "sent" | "failed" | "unknown";
+        let deliveryStatus: "queued" | "failed" | "unknown";
         try {
           const decryptedDestination = await decryptValue(challenge.destinationCiphertext, config.destinationEncryptionKey);
           deliveryStatus = await config.delivery.send({ channel, destination: decryptedDestination, code, purpose: purpose as OtpPurpose, idempotencyKey: challengeId });
         } catch { deliveryStatus = "failed"; }
         await config.repository.recordDelivery(challengeId, deliveryStatus);
         await config.repository.audit({ projectId: project.id, challengeId, event: "otp.requested", outcome: deliveryStatus, at: timestamp });
-        if (deliveryStatus !== "sent") return response({ error: "delivery_unavailable" }, 503);
+        if (deliveryStatus !== "queued") return response({ error: "delivery_unavailable" }, 503);
         return response({ challenge_id: challengeId, status: "accepted", expires_in: OTP_TTL_SECONDS, resend_after: OTP_RESEND_COOLDOWN_SECONDS }, 202);
       } catch { return response({ error: "service_unavailable" }, 503); }
     }
