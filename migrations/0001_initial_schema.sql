@@ -40,7 +40,7 @@ CREATE TABLE otp_challenges (
   max_attempts INTEGER NOT NULL DEFAULT 5 CHECK (max_attempts > 0),
   consumed_at INTEGER,
   delivery_status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (delivery_status IN ('pending', 'sent', 'failed', 'unknown'))
+    CHECK (delivery_status IN ('pending', 'queued', 'failed', 'unknown'))
 ) STRICT;
 
 CREATE INDEX idx_otp_challenges_project_created
