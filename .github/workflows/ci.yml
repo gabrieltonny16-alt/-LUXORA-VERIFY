@@ -53,6 +53,7 @@ jobs:
           sudo postconf -e 'smtpd_relay_restrictions=permit_mynetworks,reject_unauth_destination'
           sudo postconf -e 'local_recipient_maps='
           sudo postconf -e 'smtpd_sasl_auth_enable=no'
+          sudo postconf -e 'smtpd_tls_security_level=none'
           sudo sed -i '/^bounces:/d' /etc/aliases
           echo 'bounces: runner' | sudo tee -a /etc/aliases
           sudo newaliases
