@@ -6,6 +6,7 @@ import { dirname } from "node:path";
 export interface MailPayload { destination: string; code: string; purpose: "sign_up" | "sign_in" | "password_reset" | "change_contact"; }
 export interface QueueItem { id: string; idempotencyKey: string; payload: MailPayload; attempts: number; }
 export type EnqueueResult = { id: string; status: "queued" | "processing" | "sent" | "dead"; created: boolean };
+export interface QueueStats { queued: number; processing: number; sent: number; dead: number; }
 function encrypt(value: string, key: Buffer): string {
   const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", key, iv);
   const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
@@ -88,6 +89,12 @@ export class MailQueue {
     }
     const delay = Math.min(60 * 60_000, 5_000 * (2 ** Math.min(nextAttempts - 1, 10)));
     this.db.prepare("UPDATE mail_queue SET status='queued',attempts=?,next_attempt_at=?,lease_until=NULL,last_error_code=?,updated_at=? WHERE id=? AND status='processing'").run(nextAttempts, now + delay, errorCode, now, id);
+  }
+  stats(): QueueStats {
+    const rows = this.db.prepare("SELECT status,COUNT(*) AS count FROM mail_queue GROUP BY status").all() as Array<{status: keyof QueueStats; count: number}>;
+    const result: QueueStats = { queued: 0, processing: 0, sent: 0, dead: 0 };
+    for (const row of rows) result[row.status] = row.count;
+    return result;
   }
   close(): void { this.db.close(); }
 }
