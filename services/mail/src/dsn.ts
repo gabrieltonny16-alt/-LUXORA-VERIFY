@@ -2,10 +2,7 @@ import { createHash } from "node:crypto";
 import { simpleParser } from "mailparser";
 import type { DeliveryEvent } from "./queue.js";
 
-export interface ParsedDsn {
-  deliveryId: string;
-  event: DeliveryEvent;
-}
+export interface ParsedDsn { deliveryId: string; event: DeliveryEvent; }
 function parseFields(block: string): Map<string, string> {
   const unfolded = block.replace(/\r?\n[ \t]+/g, " ");
   const fields = new Map<string, string>();
@@ -33,10 +30,10 @@ export async function parseDeliveryStatusReport(raw: Buffer | string): Promise<P
   const reportText = reports[0].content.toString("utf8");
   const blocks = reportText.split(/\r?\n\s*\r?\n/).map(block => block.trim()).filter(Boolean);
   if (blocks.length < 2) return null;
-  const messageFields = parseFields(blocks[0]);
-  const deliveryId = messageFields.get("original-envelope-id")?.replace(/^<|>$/g, "").trim();
+  const deliveryId = blocks.map(parseFields).map(fields => fields.get("original-envelope-id"))
+    .find(value => value !== undefined)?.replace(/^<|>$/g, "").trim();
   if (!deliveryId || !/^[a-f0-9]{32}$/i.test(deliveryId)) return null;
-  const recipients = blocks.slice(1).map(parseFields).filter(fields => fields.has("final-recipient"));
+  const recipients = blocks.map(parseFields).filter(fields => fields.has("final-recipient"));
   if (recipients.length !== 1) return null;
   const recipientFields = recipients[0];
   const recipient = addressFromRecipient(recipientFields.get("final-recipient"));
