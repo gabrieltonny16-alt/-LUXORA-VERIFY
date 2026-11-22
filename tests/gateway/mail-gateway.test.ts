@@ -49,7 +49,7 @@ describe("private LUXORA MAIL gateway", () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 
-  it("refuses to connect when Cloudflare Access is not configured", async () => {\n    const upstream = vi.fn();\n    const response = await createMailGateway({ ...env, CF_ACCESS_CLIENT_SECRET: undefined }, upstream)(request());\n    expect(response.status).toBe(503);\n    expect(upstream).not.toHaveBeenCalled();\n  });\n\n  it("does not claim acceptance when the mail origin returns an error", async () => {
+  it("refuses to connect when Cloudflare Access is not configured", async () => {\n    const upstream = vi.fn();\n    const response = await createMailGateway({ ...env, CF_ACCESS_CLIENT_SECRET: "" }, upstream)(request());\n    expect(response.status).toBe(503);\n    expect(upstream).not.toHaveBeenCalled();\n  });\n\n  it("does not claim acceptance when the mail origin returns an error", async () => {
     const upstream = vi.fn<typeof fetch>().mockResolvedValue(new Response("failure", { status: 500 }));
     const response = await createMailGateway(env, upstream)(request());
     expect(response.status).toBe(503);
