@@ -10,13 +10,13 @@ be operated by LUXORA.
 Node.js 22 or later.
 
 1. Copy `.env.example` to a private environment file.
-2. Set distinct internal-delivery and event-ingestion tokens, each with at least 32 random bytes.
+2. Set distinct internal-delivery, event-ingestion, and operations-admin tokens, each with at least 32 random bytes.
 3. Generate a separate 32-byte queue encryption key and base64-encode it.
 4. Configure an SMTP submission host, credentials, verified sender, and dedicated bounce address.
 5. Install dependencies, then run `npm run typecheck`, `npm test`, and `npm run build`.
 6. Start with `npm run start`.
 
-The service binds to loopback by default. Keep the SQLite data directory on a persistent
+The service binds to loopback by default. The separate `ADMIN_TOKEN` protects read-only operations endpoints; never reuse the delivery or event-ingestion tokens. Keep the SQLite data directory on a persistent
 volume and back up the database and encryption key securely. Losing the encryption key
 makes queued OTP payloads unreadable. Do not share one SQLite file between multiple
 independent hosts; use a single active queue worker until a distributed lease/locking
@@ -126,13 +126,13 @@ recipient address in the suppression table.
 
 - `GET /health`: process health.
 - `GET /v1/queue`: authenticated queue counters (queued, processing, sent, dead).
-- `GET /v1/suppressions`: authenticated aggregate suppression/event counters.
+- `GET /v1/suppressions`: authenticated aggregate suppression/event counters.\n- `GET /v1/admin/queue`: private admin-token view of queue metadata and aggregate counters.\n- `GET /v1/admin/dead-letters`: private admin-token dead-letter metadata.\n- `GET /v1/admin/suppressions`: private admin-token suppression references (truncated HMAC fingerprints), reasons, and aggregate counts.
 - `POST /v1/deliveries`: authenticated, idempotent queue submission.
 - `POST /v1/events`: authenticated event intake for trusted internal adapters.
 - `POST /v1/mta-events`: authenticated DSN intake with delivery-ID/recipient matching.
 - `POST /v1/arf-events`: private authenticated complaint intake; requires a trusted upstream feedback-loop route.
 
-The service reports durable queue acceptance to LUXORA VERIFY (the API audit label
+The read-only operations API exposes delivery IDs, states, attempts, timestamps, and safe error codes only. It never returns OTP payloads, recipient addresses, SMTP credentials, or full recipient fingerprints. Pagination is capped at 100 records per request. Suppression release and dead-letter replay are deliberately not exposed yet; they require audited, explicitly confirmed workflows.\n\nThe service reports durable queue acceptance to LUXORA VERIFY (the API audit label
 `sent` means accepted by the internal delivery queue, not confirmed inbox delivery).
 
 ## Self-operated mail infrastructure
