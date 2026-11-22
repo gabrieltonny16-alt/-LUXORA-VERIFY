@@ -7,7 +7,7 @@ import { createMailServer, type MailEnv } from "../src/server.js";
 const token = "x".repeat(40);
 const eventToken = "y".repeat(40);
 const env: MailEnv = {
-  PORT: 8788, INTERNAL_SERVICE_TOKEN: token, EVENT_INGEST_TOKEN: eventToken,
+  PORT: 8788, INTERNAL_SERVICE_TOKEN: token, EVENT_INGEST_TOKEN: eventToken,\n  ADMIN_TOKEN: "z".repeat(40),
   QUEUE_DB_PATH: ":memory:", QUEUE_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
   SMTP_HOST: "localhost", SMTP_PORT: 587, SMTP_SECURE: false, SMTP_USER: "test",
   SMTP_PASSWORD: "test", MAIL_FROM: "verify@example.test", MAIL_FROM_NAME: "LUXORA VERIFY", BOUNCE_ADDRESS: "bounces@example.test",
