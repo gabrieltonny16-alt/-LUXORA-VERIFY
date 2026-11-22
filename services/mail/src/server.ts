@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 
-interface MailEnv {
+export interface MailEnv {
   PORT: number;
   INTERNAL_SERVICE_TOKEN: string;
   SMTP_HOST: string;
@@ -31,10 +32,12 @@ function loadEnv(): MailEnv {
   const smtpPort = Number(process.env.SMTP_PORT ?? "587");
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid PORT");
   if (!Number.isInteger(smtpPort) || smtpPort < 1 || smtpPort > 65535) throw new Error("Invalid SMTP_PORT");
+  const internalToken = required("INTERNAL_SERVICE_TOKEN");
+  if (Buffer.byteLength(internalToken, "utf8") < 32) throw new Error("INTERNAL_SERVICE_TOKEN must be at least 32 bytes");
   const secure = process.env.SMTP_SECURE === "true";
   return {
     PORT: port,
-    INTERNAL_SERVICE_TOKEN: required("INTERNAL_SERVICE_TOKEN"),
+    INTERNAL_SERVICE_TOKEN: internalToken,
     SMTP_HOST: required("SMTP_HOST"),
     SMTP_PORT: smtpPort,
     SMTP_SECURE: secure,
@@ -73,6 +76,13 @@ function validDelivery(value: unknown): value is DeliveryBody {
     && ["sign_up", "sign_in", "password_reset", "change_contact"].includes(String(item.purpose));
 }
 
+function tokenMatches(provided: string | undefined, expected: string): boolean {
+  if (!provided) return false;
+  const left = Buffer.from(provided, "utf8");
+  const right = Buffer.from(expected, "utf8");
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   response.end(JSON.stringify(body));
@@ -103,7 +113,9 @@ export function createMailServer(env: MailEnv, transport: Pick<Transporter, "sen
       sendJson(response, 404, { error: "not_found" });
       return;
     }
-    if (request.headers.authorization !== `Bearer ${env.INTERNAL_SERVICE_TOKEN}`) {
+    const authorization = request.headers.authorization ?? "";
+    const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : undefined;
+    if (!tokenMatches(suppliedToken, env.INTERNAL_SERVICE_TOKEN)) {
       sendJson(response, 401, { error: "unauthorized" });
       return;
     }
