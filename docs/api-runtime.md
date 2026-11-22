@@ -30,6 +30,20 @@ LUXORA MAIL persists encrypted payloads in SQLite, deduplicates challenge IDs, r
 expired processing leases, and retries SMTP submission with bounded exponential backoff.
 Its 202 response means queue acceptance, not final inbox delivery.
 
+## Mail bounce and complaint handling
+
+LUXORA MAIL exposes an authenticated `POST /v1/events` intake contract for
+`hard_bounce`, `soft_bounce`, and `complaint` events. Hard bounces and complaints
+create durable HMAC-fingerprinted suppression entries, cancel queued deliveries to the
+affected address, and block future enqueue attempts. Soft bounces are recorded without
+automatic suppression. Event IDs are deduplicated. `GET /v1/suppressions` exposes
+aggregate counts only.
+
+This is not yet connected to a real mail transfer agent or bounce source. A trusted
+LUXORA-operated MTA notification parser or signed webhook adapter must be built and
+connected before remote bounce/complaint events can flow automatically. The event
+endpoint must remain private; do not accept arbitrary public event submissions.
+
 ## Private mail gateway topology
 
 `src/index.ts` -> Cloudflare service binding `MAIL_SERVICE` -> private
