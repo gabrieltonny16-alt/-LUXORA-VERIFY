@@ -117,7 +117,8 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
       const result = queue.recordDeliveryEvent(payload);
       sendJson(response, 202, { accepted: true, duplicate: result.duplicate, suppressed: result.suppressed });
       return;
-    }\n    if (isMtaEvent) {
+    }
+    if (isMtaEvent) {
       if (typeof payload !== "object" || payload === null || Array.isArray(payload)) { sendJson(response, 400, { error: "invalid_event" }); return; }
       const item = payload as Record<string, unknown>;
       if (typeof item.deliveryId !== "string" || !/^[a-f0-9]{32}$/i.test(item.deliveryId) || !validDeliveryEvent(item.event)) {
