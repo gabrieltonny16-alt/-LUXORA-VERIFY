@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { simpleParser } from "mailparser";
+import { simpleParser, type ParsedMail } from "mailparser";
 import type { DeliveryEvent } from "./queue.js";
 
 export interface ParsedDsn { deliveryId: string; event: DeliveryEvent; }
@@ -24,7 +24,7 @@ function addressFromRecipient(value: string | undefined): string | null {
 export async function parseDeliveryStatusReport(raw: Buffer | string): Promise<ParsedDsn | null> {
   const rawBuffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw, "utf8");
   if (rawBuffer.length === 0 || rawBuffer.length > 256 * 1024) throw new Error("DSN message size is invalid");
-  const parsed = await simpleParser(rawBuffer, { skipHtml: true, skipTextToHtml: true });
+  const parsed = await simpleParser(rawBuffer) as ParsedMail;
   const reports = parsed.attachments.filter(part => part.contentType.toLowerCase() === "message/delivery-status");
   if (reports.length !== 1 || !reports[0]) return null;
   const reportText = reports[0].content.toString("utf8");
