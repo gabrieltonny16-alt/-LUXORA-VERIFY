@@ -6,8 +6,8 @@ point injects D1 persistence and private first-party service bindings.
 ## Required runtime configuration
 
 - D1 database binding: `DB`.
-- Private first-party mail service binding: `MAIL_SERVICE`.
-- Private first-party SMS service binding: `SMS_SERVICE`.
+- Private first-party mail gateway binding: `MAIL_SERVICE`.
+- Private first-party SMS service binding: `SMS_SERVICE` (not implemented yet).
 - `MAIL_SERVICE_TOKEN` and `SMS_SERVICE_TOKEN`: independent high-entropy service credentials.
 - `API_KEY_PEPPER`, `OTP_PEPPER`, and `DESTINATION_FINGERPRINT_PEPPER`: each at least 32 bytes.
 - `DESTINATION_ENCRYPTION_KEY`: at least 32 bytes.
@@ -21,21 +21,35 @@ The Worker routes email and SMS jobs to private LUXORA delivery services. Both r
 POST `/v1/deliveries` with JSON containing `destination`, `code`, and `purpose`,
 plus an `Idempotency-Key` derived from the unique OTP challenge ID.
 
-- HTTP 200 or 202 means the downstream service durably accepted the job.
+- HTTP 202 means the downstream service durably accepted the job into its queue.
 - HTTP 4xx means the downstream service rejected the job.
 - HTTP 5xx or a transport exception is treated as unknown because acceptance may have
   happened before the connection failed.
 
-LUXORA MAIL now persists encrypted payloads in SQLite, deduplicates challenge IDs,
-recovers expired processing leases, and retries SMTP submission with bounded exponential
-backoff. Its 202 response means queue acceptance, not final inbox delivery. The SMS
-service must implement equivalent durable idempotency before automatic retries are safe.
+LUXORA MAIL persists encrypted payloads in SQLite, deduplicates challenge IDs, recovers
+expired processing leases, and retries SMTP submission with bounded exponential backoff.
+Its 202 response means queue acceptance, not final inbox delivery.
 
-Cloudflare service bindings connect Worker services to other Workers; they do not
-directly attach a Cloudflare Worker to an arbitrary Node.js process. LUXORA MAIL is
-currently a Node.js service. A private authenticated gateway or supported private
-network bridge is still required between `MAIL_SERVICE` and that Node service.
-Do not expose the Node mail endpoint publicly as a shortcut.
+## Private mail gateway topology
+
+`src/index.ts` -> Cloudflare service binding `MAIL_SERVICE` -> private
+`luxora-mail-gateway` Worker -> Cloudflare Access Service Auth -> Cloudflare Tunnel
+-> Node.js LUXORA MAIL on loopback port 8788 -> SMTP host.
+
+The gateway has `workers_dev = false` and no public route. It validates a dedicated
+inbound bearer token, validates the OTP payload and idempotency key, forwards to one
+fixed HTTPS origin, uses a separate origin bearer token, requires Cloudflare Access
+service-token credentials, refuses redirects, and only returns 202 after the mail
+service confirms durable queue acceptance.
+
+The Node mail application must remain bound to `127.0.0.1`; do not expose port 8788
+directly. The origin hostname must be protected by a Cloudflare Access Service Auth
+policy. See `services/mail-gateway/README.md`.
+
+The repository root `wrangler.toml` declares the `MAIL_SERVICE` binding. Its D1
+database ID is intentionally a placeholder until a database is created. The gateway
+and service binding are code/configuration only; no tunnel, Access policy, DNS record,
+secret, or Worker has been provisioned. SMS binding and gateway are separate work.
 
 Do not log OTP values, full destinations, API keys, or transport secrets.
 
@@ -55,8 +69,8 @@ A plain read-then-write implementation is not sufficient.
 
 ## Current boundary
 
-The API and routing adapter are committed. LUXORA MAIL's local queue and SMTP submission
-application are committed, but its SMTP host, private gateway, service binding, and
-production configuration are not provisioned. LUXORA SMS, project provisioning,
-API-key management, rate limits, remote database, and deployment are not operational.
+Gateway source and service-binding configuration are committed but not deployed or
+connected to a live tunnel. LUXORA MAIL's SMTP host, Access policy, sender domain,
+production secrets, and remote database are not provisioned. LUXORA SMS, project
+provisioning, API-key management, rate limits, and deployment are not operational.
 No live messages or paid services have been activated.
