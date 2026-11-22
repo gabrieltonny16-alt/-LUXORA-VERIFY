@@ -6,6 +6,8 @@ interface Env {
   DB: D1Database;
   MAIL_SERVICE: InternalService;
   SMS_SERVICE: InternalService;
+  MAIL_SERVICE_TOKEN: string;
+  SMS_SERVICE_TOKEN: string;
   API_KEY_PEPPER: string;
   OTP_PEPPER: string;
   DESTINATION_FINGERPRINT_PEPPER: string;
@@ -19,6 +21,8 @@ export default {
       delivery: new InternalDeliveryRouter({
         mail: env.MAIL_SERVICE,
         sms: env.SMS_SERVICE,
+        mailToken: env.MAIL_SERVICE_TOKEN,
+        smsToken: env.SMS_SERVICE_TOKEN,
       }),
       apiKeyPepper: env.API_KEY_PEPPER,
       otpPepper: env.OTP_PEPPER,
