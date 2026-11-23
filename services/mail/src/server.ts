@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 import { MailQueue, RecipientSuppressedError, UnknownDeliveryEventError, type DeliveryEvent, type MailPayload } from "./queue.js";
+import { MailOperatorActions } from "./operator-actions.js";
 
 export interface MailEnv {
   PORT: number; INTERNAL_SERVICE_TOKEN: string; EVENT_INGEST_TOKEN: string; ADMIN_TOKEN: string;
@@ -103,26 +104,72 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
       if (!authorized(request, env.INTERNAL_SERVICE_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
       sendJson(response, 200, { suppressions: queue.suppressionStats() }); return;
     }
-    if (request.method === "GET" && request.url?.startsWith("/v1/admin/")) {
+    if (request.url?.startsWith("/v1/admin/")) {
       if (!authorized(request, env.ADMIN_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
       const url = new URL(request.url, "http://127.0.0.1");
       const limitText = url.searchParams.get("limit") ?? "50";
       const offsetText = url.searchParams.get("offset") ?? "0";
-      if (!/^\d{1,3}$/.test(limitText) || !/^\d{1,6}$/.test(offsetText)) {
-        sendJson(response, 400, { error: "invalid_pagination" }); return;
+      if (request.method === "GET") {
+        if (!/^\\d{1,3}$/.test(limitText) || !/^\\d{1,6}$/.test(offsetText)) {
+          sendJson(response, 400, { error: "invalid_pagination" }); return;
+        }
+        const limit = Math.max(1, Math.min(100, Number(limitText)));
+        const offset = Math.min(100_000, Number(offsetText));
+        if (url.pathname === "/v1/admin/queue") {
+          sendJson(response, 200, { queue: queue.stats(), items: queue.listQueue(limit, offset), limit, offset }); return;
+        }
+        if (url.pathname === "/v1/admin/dead-letters") {
+          sendJson(response, 200, { items: queue.listDeadLetters(limit, offset), limit, offset }); return;
+        }
+        if (url.pathname === "/v1/admin/suppressions") {
+          sendJson(response, 200, { summary: queue.suppressionStats(), items: queue.listSuppressions(limit, offset), limit, offset }); return;
+        }
+        if (url.pathname === "/v1/admin/audit") {
+          const actions = new MailOperatorActions(env.QUEUE_DB_PATH, env.QUEUE_ENCRYPTION_KEY);
+          try { sendJson(response, 200, { items: actions.listAudit(limit, offset), limit, offset }); }
+          finally { actions.close(); }
+          return;
+        }
+        sendJson(response, 404, { error: "not_found" }); return;
       }
-      const limit = Math.max(1, Math.min(100, Number(limitText)));
-      const offset = Math.min(100_000, Number(offsetText));
-      if (url.pathname === "/v1/admin/queue") {
-        sendJson(response, 200, { queue: queue.stats(), items: queue.listQueue(limit, offset), limit, offset }); return;
+      if (request.method === "POST") {
+        const operatorId = request.headers["x-operator-id"];
+        if (typeof operatorId !== "string" || !/^[A-Za-z0-9._@-]{3,80}$/.test(operatorId)) {
+          sendJson(response, 400, { error: "operator_identity_required" }); return;
+        }
+        let payload: unknown;
+        try { payload = await readBody(request); } catch { sendJson(response, 400, { error: "invalid_request" }); return; }
+        if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+          sendJson(response, 400, { error: "invalid_operator_action" }); return;
+        }
+        const item = payload as Record<string, unknown>;
+        if (typeof item.reason !== "string" || item.reason.trim().length < 12 || item.reason.length > 500) {
+          sendJson(response, 400, { error: "operator_reason_required" }); return;
+        }
+        const actions = new MailOperatorActions(env.QUEUE_DB_PATH, env.QUEUE_ENCRYPTION_KEY);
+        try {
+          if (url.pathname === "/v1/admin/suppressions/release") {
+            if (item.confirm !== "RELEASE_SUPPRESSION" || typeof item.recipientRef !== "string") {
+              sendJson(response, 400, { error: "explicit_confirmation_required" }); return;
+            }
+            const result = actions.releaseSuppression({recipientRef:item.recipientRef,operatorId,reason:item.reason});
+            if (!result.ok) {
+              sendJson(response, result.reason === "not_found" ? 404 : 409, {error:result.reason,audit_id:result.auditId}); return;
+            }
+            sendJson(response, 200, {released:true,audit_id:result.auditId}); return;
+          }
+          const replayMatch = url.pathname.match(/^\\/v1\\/admin\\/dead-letters\\/([a-f0-9]{32})\\/replay$/);
+          if (replayMatch) {
+            if (item.confirm !== "ACKNOWLEDGE_REPLAY_BLOCKED") {
+              sendJson(response, 400, { error: "explicit_confirmation_required" }); return;
+            }
+            const auditId = actions.recordReplayBlocked({deliveryId:replayMatch[1]!,operatorId,reason:item.reason});
+            sendJson(response, 409, {replayed:false,error:"replay_blocked_new_otp_required",audit_id:auditId}); return;
+          }
+          sendJson(response, 404, { error: "not_found" }); return;
+        } finally { actions.close(); }
       }
-      if (url.pathname === "/v1/admin/dead-letters") {
-        sendJson(response, 200, { items: queue.listDeadLetters(limit, offset), limit, offset }); return;
-      }
-      if (url.pathname === "/v1/admin/suppressions") {
-        sendJson(response, 200, { summary: queue.suppressionStats(), items: queue.listSuppressions(limit, offset), limit, offset }); return;
-      }
-      sendJson(response, 404, { error: "not_found" }); return;
+      sendJson(response, 405, { error: "method_not_allowed" }); return;
     }
     if (request.method !== "POST" || !["/v1/deliveries", "/v1/events", "/v1/mta-events", "/v1/arf-events"].includes(request.url ?? "")) {
       sendJson(response, 404, { error: "not_found" }); return;
