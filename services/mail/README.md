@@ -130,12 +130,15 @@ recipient address in the suppression table.
 - `GET /v1/admin/queue`: private admin-token view of queue metadata and aggregate counters.
 - `GET /v1/admin/dead-letters`: private admin-token dead-letter metadata.
 - `GET /v1/admin/suppressions`: private admin-token suppression references (truncated HMAC fingerprints), reasons, and aggregate counts.
+- `GET /v1/admin/audit`: paginated operator-action audit history.
+- `POST /v1/admin/suppressions/release`: explicit-confirmation suppression release; requires `x-operator-id`, a reason of at least 12 characters, and `confirm: "RELEASE_SUPPRESSION"`.
+- `POST /v1/admin/dead-letters/:deliveryId/replay`: records an audited refusal; requires `x-operator-id`, a reason, and `confirm: "ACKNOWLEDGE_REPLAY_BLOCKED"`. It never sends mail.
 - `POST /v1/deliveries`: authenticated, idempotent queue submission.
 - `POST /v1/events`: authenticated event intake for trusted internal adapters.
 - `POST /v1/mta-events`: authenticated DSN intake with delivery-ID/recipient matching.
 - `POST /v1/arf-events`: private authenticated complaint intake; requires a trusted upstream feedback-loop route.
 
-The read-only operations API exposes delivery IDs, states, attempts, timestamps, and safe error codes only. It never returns OTP payloads, recipient addresses, SMTP credentials, or full recipient fingerprints. Pagination is capped at 100 records per request. Suppression release and dead-letter replay are deliberately not exposed yet; they require audited, explicitly confirmed workflows.
+The read-only operations API exposes delivery IDs, states, attempts, timestamps, and safe error codes only. It never returns OTP payloads, recipient addresses, SMTP credentials, or full recipient fingerprints. Pagination is capped at 100 records per request. Suppression release is an audited, explicitly confirmed action. It matches the unique 16-character suppression reference against the full HMAC fingerprint; zero matches return 404 and collisions return 409 without deleting anything. The audit stores the action, asserted operator ID, reason, target reference, outcome, and timestamp. The current `x-operator-id` value is an asserted label protected by the shared `ADMIN_TOKEN`, not an independently authenticated identity; production multi-operator use must add per-operator credentials/roles before relying on attribution.\n\nDead-letter replay is intentionally blocked. OTP payloads are cleared when an item becomes dead and OTPs expire after five minutes, so the endpoint only records the attempted action and returns HTTP 409 `replay_blocked_new_otp_required`. A new verification request must create a fresh code.
 
 The service reports durable queue acceptance to LUXORA VERIFY (the API audit label
 `sent` means accepted by the internal delivery queue, not confirmed inbox delivery).
