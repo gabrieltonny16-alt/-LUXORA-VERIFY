@@ -1,9 +1,9 @@
 import Database from "better-sqlite3";
-import { createHmac, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 export type OperatorActionResult =
   | { ok: true; auditId: string }
-  | { ok: false; reason: "not_found" | "ambiguous_reference" | "database_not_persistent" };
+  | { ok: false; reason: "not_found" | "ambiguous_reference"; auditId: string };
 
 export class MailOperatorActions {
   private readonly db: InstanceType<typeof Database>;
