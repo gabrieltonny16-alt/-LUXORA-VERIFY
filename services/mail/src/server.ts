@@ -158,7 +158,7 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
             }
             sendJson(response, 200, {released:true,audit_id:result.auditId}); return;
           }
-          const replayMatch = url.pathname.match(/^\\/v1\\/admin\\/dead-letters\\/([a-f0-9]{32})\\/replay$/);
+          const replayMatch = url.pathname.match(new RegExp("^/v1/admin/dead-letters/([a-f0-9]{32})/replay$"));
           if (replayMatch) {
             if (item.confirm !== "ACKNOWLEDGE_REPLAY_BLOCKED") {
               sendJson(response, 400, { error: "explicit_confirmation_required" }); return;
