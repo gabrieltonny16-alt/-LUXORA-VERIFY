@@ -64,6 +64,16 @@ export class MailOperatorActions {
     })();
   }
 
+  listAudit(limit = 50, offset = 0): Array<{id:string;operatorId:string;action:string;targetRef:string;reason:string;outcome:string;createdAt:number}> {
+    const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+    const safeOffset = Math.max(0, Math.min(100_000, Math.trunc(offset)));
+    const rows = this.db.prepare(`
+      SELECT id,operator_id,action,target_ref,reason,outcome,created_at
+      FROM mail_operator_audit ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?
+    `).all(safeLimit, safeOffset) as Array<{id:string;operator_id:string;action:string;target_ref:string;reason:string;outcome:string;created_at:number}>;
+    return rows.map(row => ({id:row.id,operatorId:row.operator_id,action:row.action,targetRef:row.target_ref,reason:row.reason,outcome:row.outcome,createdAt:row.created_at}));
+  }
+
   recordReplayBlocked(input: { deliveryId: string; operatorId: string; reason: string }): string {
     const { deliveryId, operatorId, reason } = input;
     if (!/^[a-f0-9]{32}$/.test(deliveryId) || !/^[A-Za-z0-9._@-]{3,80}$/.test(operatorId)
