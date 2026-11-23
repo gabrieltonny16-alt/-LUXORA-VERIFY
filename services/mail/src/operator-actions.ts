@@ -46,7 +46,7 @@ export class MailOperatorActions {
       throw new Error("Invalid operator action");
     }
     const prefix = recipientRef.toLowerCase();
-    return this.db.transaction(() => {
+    return this.db.transaction((): OperatorActionResult => {
       const matches = this.db.prepare(
         "SELECT recipient_hash FROM mail_suppressions WHERE substr(recipient_hash,1,16)=?"
       ).all(prefix) as Array<{ recipient_hash: string }>;
@@ -58,7 +58,7 @@ export class MailOperatorActions {
         const auditId = this.audit(operatorId, "suppression_release", prefix, reason.trim(), "ambiguous_reference");
         return { ok: false, reason: "ambiguous_reference" as const, auditId };
       }
-      this.db.prepare("DELETE FROM mail_suppressions WHERE recipient_hash=?").run(matches[0].recipient_hash);
+      this.db.prepare("DELETE FROM mail_suppressions WHERE recipient_hash=?").run(matches[0]!.recipient_hash);
       const auditId = this.audit(operatorId, "suppression_release", prefix, reason.trim(), "released");
       return { ok: true, auditId };
     })();
