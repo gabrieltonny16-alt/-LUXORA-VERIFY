@@ -89,7 +89,6 @@ test("private operations API exposes queue, dead-letter and suppression metadata
     assert.ok(audit.items.some(entry => entry.action === "dead_letter_replay" && entry.outcome.startsWith("blocked")));
     assert.equal(JSON.stringify(audit).includes(destination), false);
     const invalid = await fetch(base + "/v1/admin/queue?limit=not-a-number", { headers });
-    const invalid = await fetch(base + "/v1/admin/queue?limit=not-a-number", { headers });
     assert.equal(invalid.status, 400);
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
