@@ -10,13 +10,13 @@ be operated by LUXORA.
 Node.js 22 or later.
 
 1. Copy `.env.example` to a private environment file.
-2. Set distinct internal-delivery, event-ingestion, and operations-admin tokens, each with at least 32 random bytes.
+2. Set distinct internal-delivery and event-ingestion tokens, each with at least 32 random bytes. Set `ADMIN_TOKEN` only for the first-owner bootstrap, then unset it.
 3. Generate a separate 32-byte queue encryption key and base64-encode it.
 4. Configure an SMTP submission host, credentials, verified sender, and dedicated bounce address.
 5. Install dependencies, then run `npm run typecheck`, `npm test`, and `npm run build`.
 6. Start with `npm run start`.
 
-The service binds to loopback by default. The separate `ADMIN_TOKEN` protects read-only operations endpoints; never reuse the delivery or event-ingestion tokens. Keep the SQLite data directory on a persistent
+The service binds to loopback by default. Individual operator sessions protect the Operations API; the optional `ADMIN_TOKEN` is accepted only by the one-time owner bootstrap route. Never reuse the delivery or event-ingestion tokens. Keep the SQLite data directory on a persistent
 volume and back up the database and encryption key securely. Losing the encryption key
 makes queued OTP payloads unreadable. Do not share one SQLite file between multiple
 independent hosts; use a single active queue worker until a distributed lease/locking
@@ -146,8 +146,8 @@ immutable account ID, never a client-supplied identity header. Sessions are stor
 persistent SQLite database as the mail queue.
 
 Initial bootstrap should be performed only over the private loopback/service-authenticated
-network. Keep the bootstrap token secret and rotate/remove it from runtime configuration after
-the owner account has been created. The current roles are intentionally conservative; add
+network. Keep the bootstrap token secret and unset `ADMIN_TOKEN` from runtime configuration
+after the owner account has been created; the service can run without it. The current roles are intentionally conservative; add
 account disable/reset workflows and operational recovery procedures before production use.
 
 ## Endpoints
