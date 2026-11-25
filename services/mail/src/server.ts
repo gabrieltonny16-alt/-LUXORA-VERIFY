@@ -161,7 +161,7 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
       const limitText = url.searchParams.get("limit") ?? "50";
       const offsetText = url.searchParams.get("offset") ?? "0";
       if (request.method === "GET") {
-        if (!/^\\d{1,3}$/.test(limitText) || !/^\\d{1,6}$/.test(offsetText)) {
+        if (!/^\d{1,3}$/.test(limitText) || !/^\d{1,6}$/.test(offsetText)) {
           sendJson(response, 400, { error: "invalid_pagination" }); return;
         }
         const limit = Math.max(1, Math.min(100, Number(limitText)));
