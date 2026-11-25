@@ -165,10 +165,13 @@ export class MailOperatorAuth {
       id:string;email:string;display_name:string;role:OperatorRole;
       password_salt:Buffer;password_hash:Buffer;disabled_at:number|null;
     } | undefined;
-    if (!row || row.disabled_at !== null || password.length > PASSWORD_MAX_LENGTH
-      || !safeEqual(passwordHash(password, row.password_salt), row.password_hash)) {
-      const windowStart = !attempt || now - attempt.window_started_at > 15 * 60_000 ? now : attempt.window_started_at;
-      const attempts = windowStart === now ? 1 : attempt!.attempts + 1;
+    const withinPasswordLimit = password.length <= PASSWORD_MAX_LENGTH;
+    const candidate = passwordHash(withinPasswordLimit ? password : "invalid-password-input", row?.password_salt ?? Buffer.alloc(16));
+    const storedHash = row?.password_hash ?? Buffer.alloc(32);
+    if (!row || row.disabled_at !== null || !withinPasswordLimit || !safeEqual(candidate, storedHash)) {
+      const expiredWindow = !attempt || now - attempt.window_started_at > 15 * 60_000;
+      const windowStart = expiredWindow ? now : attempt!.window_started_at;
+      const attempts = expiredWindow ? 1 : attempt!.attempts + 1;
       const lockedUntil = attempts >= 10 ? now + 15 * 60_000 : null;
       this.db.prepare(`
         INSERT INTO mail_operator_login_attempts(email,window_started_at,attempts,locked_until)
