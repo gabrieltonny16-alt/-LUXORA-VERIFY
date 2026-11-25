@@ -122,6 +122,34 @@ The endpoint requires `EVENT_INGEST_TOKEN`, accepts complaint events only, dedup
 replays, and applies the existing HMAC-fingerprint suppression rules. It stores no raw
 recipient address in the suppression table.
 
+## Individual operator authentication
+
+The private Operations API uses individual operator accounts rather than the shared admin token.
+The first owner is created exactly once through `POST /v1/auth/bootstrap`, authenticated with
+the one-time bootstrap `ADMIN_TOKEN`. The owner then signs in through `POST /v1/auth/login`
+using an individual email and password. Login returns an opaque random bearer token; only its
+SHA-256 hash is stored in SQLite. Sessions expire after eight hours and can be revoked through
+`POST /v1/auth/logout`. Failed logins are throttled per normalized email after ten attempts
+within a 15-minute window.
+
+Roles:
+- `owner`: full operations, audit, suppression-release, and operator-management permissions.
+- `admin`: same operational permissions, but cannot create another admin.
+- `operator`: read-only queue, dead-letter, and suppression visibility.
+- `auditor`: read-only operations and audit history.
+
+The owner/admin can create named accounts through `POST /v1/admin/operators` and inspect
+accounts through `GET /v1/admin/operators`. Passwords are hashed with scrypt and random salts.
+The shared `ADMIN_TOKEN` is only for the one-time bootstrap endpoint; it cannot access
+Operations API endpoints after bootstrap. Audit entries use the authenticated operator's
+immutable account ID, never a client-supplied identity header. Sessions are stored in the same
+persistent SQLite database as the mail queue.
+
+Initial bootstrap should be performed only over the private loopback/service-authenticated
+network. Keep the bootstrap token secret and rotate/remove it from runtime configuration after
+the owner account has been created. The current roles are intentionally conservative; add
+account disable/reset workflows and operational recovery procedures before production use.
+
 ## Endpoints
 
 - `GET /health`: process health.
@@ -130,7 +158,12 @@ recipient address in the suppression table.
 - `GET /v1/admin/queue`: private admin-token view of queue metadata and aggregate counters.
 - `GET /v1/admin/dead-letters`: private admin-token dead-letter metadata.
 - `GET /v1/admin/suppressions`: private admin-token suppression references (truncated HMAC fingerprints), reasons, and aggregate counts.
-- `GET /v1/admin/audit`: paginated operator-action audit history.
+- `POST /v1/auth/bootstrap`: one-time owner creation, protected by the bootstrap-only `ADMIN_TOKEN`.
+- `POST /v1/auth/login`: individual operator sign-in; returns an eight-hour bearer session.
+- `POST /v1/auth/logout`: revoke the current bearer session.
+- `GET /v1/admin/operators`: list operator account metadata (owner/admin only).
+- `POST /v1/admin/operators`: create an admin, operator, or auditor account (owner/admin only).
+- `GET /v1/admin/audit`: paginated operator-action audit history (owner/admin/auditor).
 - `POST /v1/admin/suppressions/release`: explicit-confirmation suppression release; requires `x-operator-id`, a reason of at least 12 characters, and `confirm: "RELEASE_SUPPRESSION"`.
 - `POST /v1/admin/dead-letters/:deliveryId/replay`: records an audited refusal; requires `x-operator-id`, a reason, and `confirm: "ACKNOWLEDGE_REPLAY_BLOCKED"`. It never sends mail.
 - `POST /v1/deliveries`: authenticated, idempotent queue submission.
@@ -138,7 +171,7 @@ recipient address in the suppression table.
 - `POST /v1/mta-events`: authenticated DSN intake with delivery-ID/recipient matching.
 - `POST /v1/arf-events`: private authenticated complaint intake; requires a trusted upstream feedback-loop route.
 
-The read-only operations API exposes delivery IDs, states, attempts, timestamps, and safe error codes only. It never returns OTP payloads, recipient addresses, SMTP credentials, or full recipient fingerprints. Pagination is capped at 100 records per request. Suppression release is an audited, explicitly confirmed action. It matches the unique 16-character suppression reference against the full HMAC fingerprint; zero matches return 404 and collisions return 409 without deleting anything. The audit stores the action, asserted operator ID, reason, target reference, outcome, and timestamp. The current `x-operator-id` value is an asserted label protected by the shared `ADMIN_TOKEN`, not an independently authenticated identity; production multi-operator use must add per-operator credentials/roles before relying on attribution.\n\nDead-letter replay is intentionally blocked. OTP payloads are cleared when an item becomes dead and OTPs expire after five minutes, so the endpoint only records the attempted action and returns HTTP 409 `replay_blocked_new_otp_required`. A new verification request must create a fresh code.
+The read-only operations API exposes delivery IDs, states, attempts, timestamps, and safe error codes only. It never returns OTP payloads, recipient addresses, SMTP credentials, or full recipient fingerprints. Pagination is capped at 100 records per request. Suppression release is an audited, explicitly confirmed action. It matches the unique 16-character suppression reference against the full HMAC fingerprint; zero matches return 404 and collisions return 409 without deleting anything. The audit stores the action, authenticated operator account ID, reason, target reference, outcome, and timestamp. The operator identity is resolved from the bearer session; clients cannot choose the audit identity.\n\nDead-letter replay is intentionally blocked. OTP payloads are cleared when an item becomes dead and OTPs expire after five minutes, so the endpoint only records the attempted action and returns HTTP 409 `replay_blocked_new_otp_required`. A new verification request must create a fresh code.
 
 The service reports durable queue acceptance to LUXORA VERIFY (the API audit label
 `sent` means accepted by the internal delivery queue, not confirmed inbox delivery).
