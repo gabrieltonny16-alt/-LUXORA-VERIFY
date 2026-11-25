@@ -5,6 +5,7 @@ import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 import { MailQueue, RecipientSuppressedError, UnknownDeliveryEventError, type DeliveryEvent, type MailPayload } from "./queue.js";
 import { MailOperatorActions } from "./operator-actions.js";
+import { MailOperatorAuth } from "./operator-auth.js";
 
 export interface MailEnv {
   PORT: number; INTERNAL_SERVICE_TOKEN: string; EVENT_INGEST_TOKEN: string; ADMIN_TOKEN: string;
@@ -92,7 +93,8 @@ function messageFor(input: MailPayload): { subject: string; text: string; html: 
   };
 }
 export function createMailServer(env: MailEnv, queue: MailQueue) {
-  return createServer(async (request, response) => {
+  const operatorAuth = new MailOperatorAuth(env.QUEUE_DB_PATH);
+  const server = createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/health") {
       sendJson(response, 200, { status: "ok", service: "luxora-mail", queue: "persistent" }); return;
     }
@@ -104,17 +106,78 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
       if (!authorized(request, env.INTERNAL_SERVICE_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
       sendJson(response, 200, { suppressions: queue.suppressionStats() }); return;
     }
+    if (request.url?.startsWith("/v1/auth/")) {
+      if (request.method !== "POST") { sendJson(response, 405, { error: "method_not_allowed" }); return; }
+      if (request.url === "/v1/auth/bootstrap") {
+        if (!authorized(request, env.ADMIN_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
+        let payload: unknown;
+        try { payload = await readBody(request); } catch { sendJson(response, 400, { error: "invalid_request" }); return; }
+        if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+          sendJson(response, 400, { error: "invalid_operator_details" }); return;
+        }
+        const item = payload as Record<string, unknown>;
+        if (typeof item.email !== "string" || typeof item.displayName !== "string" || typeof item.password !== "string") {
+          sendJson(response, 400, { error: "invalid_operator_details" }); return;
+        }
+        try {
+          const operator = operatorAuth.bootstrapOwner({ email:item.email, displayName:item.displayName, password:item.password });
+          sendJson(response, 201, { created:true, operator }); return;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "";
+          sendJson(response, message.includes("already complete") ? 409 : 400, {
+            error: message.includes("already complete") ? "bootstrap_already_complete" : "invalid_operator_details",
+          });
+          return;
+        }
+      }
+      if (request.url === "/v1/auth/login") {
+        let payload: unknown;
+        try { payload = await readBody(request); } catch { sendJson(response, 400, { error: "invalid_request" }); return; }
+        if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+          sendJson(response, 400, { error: "invalid_credentials" }); return;
+        }
+        const item = payload as Record<string, unknown>;
+        if (typeof item.email !== "string" || typeof item.password !== "string") {
+          sendJson(response, 400, { error: "invalid_credentials" }); return;
+        }
+        const session = operatorAuth.authenticate(item.email, item.password);
+        if (!session) { sendJson(response, 401, { error: "invalid_credentials_or_temporarily_locked" }); return; }
+        sendJson(response, 200, session); return;
+      }
+      if (request.url === "/v1/auth/logout") {
+        const auth = request.headers.authorization ?? "";
+        const token = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
+        const revoked = operatorAuth.revokeSession(token);
+        sendJson(response, revoked ? 200 : 401, { loggedOut:revoked }); return;
+      }
+      sendJson(response, 404, { error: "not_found" }); return;
+    }
     if (request.url?.startsWith("/v1/admin/")) {
-      if (!authorized(request, env.ADMIN_TOKEN)) { sendJson(response, 401, { error: "unauthorized" }); return; }
+      const auth = request.headers.authorization ?? "";
+      const token = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
+      const operator = operatorAuth.resolveSession(token);
+      if (!operator) { sendJson(response, 401, { error: "operator_authentication_required" }); return; }
       const url = new URL(request.url, "http://127.0.0.1");
       const limitText = url.searchParams.get("limit") ?? "50";
       const offsetText = url.searchParams.get("offset") ?? "0";
       if (request.method === "GET") {
-        if (!/^\d{1,3}$/.test(limitText) || !/^\d{1,6}$/.test(offsetText)) {
+        if (!/^\\d{1,3}$/.test(limitText) || !/^\\d{1,6}$/.test(offsetText)) {
           sendJson(response, 400, { error: "invalid_pagination" }); return;
         }
         const limit = Math.max(1, Math.min(100, Number(limitText)));
         const offset = Math.min(100_000, Number(offsetText));
+        if (url.pathname === "/v1/admin/operators") {
+          if (!operatorAuth.hasPermission(operator, "operators.manage")) { sendJson(response, 403, { error:"permission_denied" }); return; }
+          sendJson(response, 200, { items:operatorAuth.listOperators() }); return;
+        }
+        if (url.pathname === "/v1/admin/audit") {
+          if (!operatorAuth.hasPermission(operator, "audit.read")) { sendJson(response, 403, { error:"permission_denied" }); return; }
+          const actions = new MailOperatorActions(env.QUEUE_DB_PATH, env.QUEUE_ENCRYPTION_KEY);
+          try { sendJson(response, 200, { items: actions.listAudit(limit, offset), limit, offset }); }
+          finally { actions.close(); }
+          return;
+        }
+        if (!operatorAuth.hasPermission(operator, "operations.read")) { sendJson(response, 403, { error:"permission_denied" }); return; }
         if (url.pathname === "/v1/admin/queue") {
           sendJson(response, 200, { queue: queue.stats(), items: queue.listQueue(limit, offset), limit, offset }); return;
         }
@@ -124,25 +187,32 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
         if (url.pathname === "/v1/admin/suppressions") {
           sendJson(response, 200, { summary: queue.suppressionStats(), items: queue.listSuppressions(limit, offset), limit, offset }); return;
         }
-        if (url.pathname === "/v1/admin/audit") {
-          const actions = new MailOperatorActions(env.QUEUE_DB_PATH, env.QUEUE_ENCRYPTION_KEY);
-          try { sendJson(response, 200, { items: actions.listAudit(limit, offset), limit, offset }); }
-          finally { actions.close(); }
-          return;
-        }
         sendJson(response, 404, { error: "not_found" }); return;
       }
       if (request.method === "POST") {
-        const operatorId = request.headers["x-operator-id"];
-        if (typeof operatorId !== "string" || !/^[A-Za-z0-9._@-]{3,80}$/.test(operatorId)) {
-          sendJson(response, 400, { error: "operator_identity_required" }); return;
-        }
         let payload: unknown;
         try { payload = await readBody(request); } catch { sendJson(response, 400, { error: "invalid_request" }); return; }
         if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
           sendJson(response, 400, { error: "invalid_operator_action" }); return;
         }
         const item = payload as Record<string, unknown>;
+        if (url.pathname === "/v1/admin/operators") {
+          if (!operatorAuth.hasPermission(operator, "operators.manage")) { sendJson(response, 403, { error:"permission_denied" }); return; }
+          if (typeof item.email !== "string" || typeof item.displayName !== "string"
+            || typeof item.password !== "string" || !["admin","operator","auditor"].includes(String(item.role))) {
+            sendJson(response, 400, { error:"invalid_operator_details" }); return;
+          }
+          try {
+            const created = operatorAuth.createOperator({
+              actor:operator, email:item.email, displayName:item.displayName,
+              password:item.password, role:item.role as "admin"|"operator"|"auditor",
+            });
+            sendJson(response, 201, { created:true, operator:created }); return;
+          } catch {
+            sendJson(response, 400, { error:"operator_creation_rejected" }); return;
+          }
+        }
+        if (!operatorAuth.hasPermission(operator, "suppression.release")) { sendJson(response, 403, { error:"permission_denied" }); return; }
         if (typeof item.reason !== "string" || item.reason.trim().length < 12 || item.reason.length > 500) {
           sendJson(response, 400, { error: "operator_reason_required" }); return;
         }
@@ -152,7 +222,7 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
             if (item.confirm !== "RELEASE_SUPPRESSION" || typeof item.recipientRef !== "string") {
               sendJson(response, 400, { error: "explicit_confirmation_required" }); return;
             }
-            const result = actions.releaseSuppression({recipientRef:item.recipientRef,operatorId,reason:item.reason});
+            const result = actions.releaseSuppression({recipientRef:item.recipientRef,operatorId:operator.id,reason:item.reason});
             if (!result.ok) {
               sendJson(response, result.reason === "not_found" ? 404 : 409, {error:result.reason,audit_id:result.auditId}); return;
             }
@@ -163,7 +233,7 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
             if (item.confirm !== "ACKNOWLEDGE_REPLAY_BLOCKED") {
               sendJson(response, 400, { error: "explicit_confirmation_required" }); return;
             }
-            const auditId = actions.recordReplayBlocked({deliveryId:replayMatch[1]!,operatorId,reason:item.reason});
+            const auditId = actions.recordReplayBlocked({deliveryId:replayMatch[1]!,operatorId:operator.id,reason:item.reason});
             sendJson(response, 409, {replayed:false,error:"replay_blocked_new_otp_required",audit_id:auditId}); return;
           }
           sendJson(response, 404, { error: "not_found" }); return;
@@ -223,6 +293,8 @@ export function createMailServer(env: MailEnv, queue: MailQueue) {
       sendJson(response, 503, { error: "queue_unavailable" });
     }
   });
+  server.on("close", () => operatorAuth.close());
+  return server;
 }
 export async function deliverOne(
   queue: MailQueue,
