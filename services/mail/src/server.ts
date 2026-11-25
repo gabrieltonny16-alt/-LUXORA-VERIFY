@@ -25,10 +25,10 @@ function loadEnv(): MailEnv {
   if (!Number.isInteger(smtpPort) || smtpPort < 1 || smtpPort > 65535) throw new Error("Invalid SMTP_PORT");
   const token = required("INTERNAL_SERVICE_TOKEN");
   const eventToken = required("EVENT_INGEST_TOKEN");
-  const adminToken = required("ADMIN_TOKEN");
+  const adminToken = process.env.ADMIN_TOKEN?.trim() ?? "";
   if (Buffer.byteLength(token, "utf8") < 32) throw new Error("INTERNAL_SERVICE_TOKEN must be at least 32 bytes");
   if (Buffer.byteLength(eventToken, "utf8") < 32) throw new Error("EVENT_INGEST_TOKEN must be at least 32 bytes");
-  if (Buffer.byteLength(adminToken, "utf8") < 32) throw new Error("ADMIN_TOKEN must be at least 32 bytes");
+  if (adminToken && Buffer.byteLength(adminToken, "utf8") < 32) throw new Error("ADMIN_TOKEN must be at least 32 bytes when bootstrap is enabled");
   const queueKey = required("QUEUE_ENCRYPTION_KEY");
   if (Buffer.from(queueKey, "base64").length !== 32) throw new Error("QUEUE_ENCRYPTION_KEY must be a base64-encoded 32-byte key");
   return {
