@@ -80,6 +80,12 @@ export class MailOperatorAuth {
       );
       CREATE INDEX IF NOT EXISTS mail_operator_sessions_operator_idx
         ON mail_operator_sessions(operator_id, expires_at);
+      CREATE TABLE IF NOT EXISTS mail_operator_login_attempts (
+        email TEXT PRIMARY KEY,
+        window_started_at INTEGER NOT NULL,
+        attempts INTEGER NOT NULL,
+        locked_until INTEGER
+      );
     `);
   }
 
@@ -124,6 +130,10 @@ export class MailOperatorAuth {
 
   authenticate(emailInput: string, password: string): OperatorSession | null {
     const email = normalizeEmail(emailInput);
+    const now = Date.now();
+    const attempt = this.db.prepare("SELECT window_started_at,attempts,locked_until FROM mail_operator_login_attempts WHERE email=?")
+      .get(email) as {window_started_at:number;attempts:number;locked_until:number|null} | undefined;
+    if (attempt?.locked_until && attempt.locked_until > now) return null;
     const row = this.db.prepare(`
       SELECT id,email,display_name,role,password_salt,password_hash,disabled_at
       FROM mail_operators WHERE email=?
@@ -131,10 +141,21 @@ export class MailOperatorAuth {
       id:string;email:string;display_name:string;role:OperatorRole;
       password_salt:Buffer;password_hash:Buffer;disabled_at:number|null;
     } | undefined;
-    if (!row || row.disabled_at !== null || password.length > PASSWORD_MAX_LENGTH) return null;
-    const candidate = passwordHash(password, row.password_salt);
-    if (!safeEqual(candidate, row.password_hash)) return null;
-    const now = Date.now();
+    const passwordValid = Boolean(row && row.disabled_at === null && password.length <= PASSWORD_MAX_LENGTH
+      && safeEqual(passwordHash(password, row.password_salt), row.password_hash));
+    if (!passwordValid || !row) {
+      const windowStart = !attempt || now - attempt.window_started_at > 15 * 60_000 ? now : attempt.window_started_at;
+      const attempts = windowStart === now ? 1 : attempt!.attempts + 1;
+      const lockedUntil = attempts >= 10 ? now + 15 * 60_000 : null;
+      this.db.prepare(`
+        INSERT INTO mail_operator_login_attempts(email,window_started_at,attempts,locked_until)
+        VALUES (?,?,?,?)
+        ON CONFLICT(email) DO UPDATE SET window_started_at=excluded.window_started_at,
+          attempts=excluded.attempts,locked_until=excluded.locked_until
+      `).run(email, windowStart, attempts, lockedUntil);
+      return null;
+    }
+    this.db.prepare("DELETE FROM mail_operator_login_attempts WHERE email=?").run(email);
     const token = randomBytes(32).toString("base64url");
     const expiresAt = now + SESSION_TTL_MS;
     this.db.prepare("INSERT INTO mail_operator_sessions(token_hash,operator_id,created_at,expires_at) VALUES (?,?,?,?)")
