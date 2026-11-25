@@ -139,10 +139,11 @@ test("operations API enforces individual operator sessions, roles and authentica
     const auditResponse = await fetch(base + "/v1/admin/audit", {headers:ownerHeaders});
     assert.equal(auditResponse.status, 200);
     const audit = await auditResponse.json() as {items:Array<{operatorId:string;action:string;outcome:string}>};
-    assert.equal(audit.items.length, 2);
-    assert.ok(audit.items.every(entry => entry.operatorId === ownerSession.operator.id));
-    assert.ok(audit.items.some(entry => entry.action === "suppression_release" && entry.outcome === "released"));
-    assert.ok(audit.items.some(entry => entry.action === "dead_letter_replay" && entry.outcome.startsWith("blocked")));
+    assert.equal(audit.items.length, 4);
+    assert.ok(audit.items.some(entry => entry.operatorId === ownerSession.operator.id && entry.action === "owner_bootstrap"));
+    assert.ok(audit.items.some(entry => entry.operatorId === ownerSession.operator.id && entry.action === "operator_create"));
+    assert.ok(audit.items.some(entry => entry.operatorId === ownerSession.operator.id && entry.action === "suppression_release" && entry.outcome === "released"));
+    assert.ok(audit.items.some(entry => entry.operatorId === ownerSession.operator.id && entry.action === "dead_letter_replay" && entry.outcome.startsWith("blocked")));
     assert.equal(JSON.stringify(audit).includes(destination), false);
 
     const operatorsResponse = await fetch(base + "/v1/admin/operators", {headers:ownerHeaders});
