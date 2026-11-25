@@ -141,9 +141,8 @@ export class MailOperatorAuth {
       id:string;email:string;display_name:string;role:OperatorRole;
       password_salt:Buffer;password_hash:Buffer;disabled_at:number|null;
     } | undefined;
-    const passwordValid = Boolean(row && row.disabled_at === null && password.length <= PASSWORD_MAX_LENGTH
-      && safeEqual(passwordHash(password, row.password_salt), row.password_hash));
-    if (!passwordValid || !row) {
+    if (!row || row.disabled_at !== null || password.length > PASSWORD_MAX_LENGTH
+      || !safeEqual(passwordHash(password, row.password_salt), row.password_hash)) {
       const windowStart = !attempt || now - attempt.window_started_at > 15 * 60_000 ? now : attempt.window_started_at;
       const attempts = windowStart === now ? 1 : attempt!.attempts + 1;
       const lockedUntil = attempts >= 10 ? now + 15 * 60_000 : null;
