@@ -86,6 +86,17 @@ export class MailOperatorAuth {
         attempts INTEGER NOT NULL,
         locked_until INTEGER
       );
+      CREATE TABLE IF NOT EXISTS mail_operator_audit (
+        id TEXT PRIMARY KEY,
+        operator_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target_ref TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS mail_operator_audit_created_idx
+        ON mail_operator_audit(created_at DESC);
     `);
   }
 
@@ -112,7 +123,9 @@ export class MailOperatorAuth {
     return this.db.transaction(() => {
       const count = (this.db.prepare("SELECT COUNT(*) AS count FROM mail_operators").get() as { count: number }).count;
       if (count !== 0) throw new Error("Operator bootstrap is already complete");
-      return this.createRecord({ ...input, role: "owner" });
+      const owner = this.createRecord({ ...input, role: "owner" });
+      this.writeAudit(owner.id, "owner_bootstrap", owner.id, "Initial owner account created.", "created");
+      return owner;
     })();
   }
 
@@ -125,7 +138,18 @@ export class MailOperatorAuth {
   }): AuthenticatedOperator {
     if (!this.hasPermission(input.actor, "operators.manage")) throw new Error("Operator management is not permitted");
     if (input.actor.role === "admin" && input.role === "admin") throw new Error("Only an owner can create another admin");
-    return this.createRecord({ email: input.email, displayName: input.displayName, password: input.password, role: input.role });
+    return this.db.transaction(() => {
+      const created = this.createRecord({ email: input.email, displayName: input.displayName, password: input.password, role: input.role });
+      this.writeAudit(input.actor.id, "operator_create", created.id, `Created ${created.role} account.`, "created");
+      return created;
+    })();
+  }
+
+  private writeAudit(operatorId: string, action: string, targetRef: string, reason: string, outcome: string): void {
+    this.db.prepare(`
+      INSERT INTO mail_operator_audit(id,operator_id,action,target_ref,reason,outcome,created_at)
+      VALUES (?,?,?,?,?,?,?)
+    `).run(randomUUID(), operatorId, action, targetRef, reason, outcome, Date.now());
   }
 
   authenticate(emailInput: string, password: string): OperatorSession | null {
