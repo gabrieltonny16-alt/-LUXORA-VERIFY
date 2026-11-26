@@ -29,11 +29,13 @@ function loadEnv(): MailEnv {
   if (Buffer.byteLength(token, "utf8") < 32) throw new Error("INTERNAL_SERVICE_TOKEN must be at least 32 bytes");
   if (Buffer.byteLength(eventToken, "utf8") < 32) throw new Error("EVENT_INGEST_TOKEN must be at least 32 bytes");
   if (adminToken && Buffer.byteLength(adminToken, "utf8") < 32) throw new Error("ADMIN_TOKEN must be at least 32 bytes when bootstrap is enabled");
+  const queueDbPath = process.env.QUEUE_DB_PATH?.trim() || "./data/mail-queue.sqlite";
+  if (queueDbPath === ":memory:") throw new Error("QUEUE_DB_PATH must use persistent storage");
   const queueKey = required("QUEUE_ENCRYPTION_KEY");
   if (Buffer.from(queueKey, "base64").length !== 32) throw new Error("QUEUE_ENCRYPTION_KEY must be a base64-encoded 32-byte key");
   return {
     PORT: port, INTERNAL_SERVICE_TOKEN: token, EVENT_INGEST_TOKEN: eventToken, ADMIN_TOKEN: adminToken,
-    QUEUE_DB_PATH: process.env.QUEUE_DB_PATH?.trim() || "./data/mail-queue.sqlite",
+    QUEUE_DB_PATH: queueDbPath,
     QUEUE_ENCRYPTION_KEY: queueKey, SMTP_HOST: required("SMTP_HOST"), SMTP_PORT: smtpPort,
     SMTP_SECURE: process.env.SMTP_SECURE === "true", SMTP_USER: required("SMTP_USER"),
     SMTP_PASSWORD: required("SMTP_PASSWORD"), MAIL_FROM: required("MAIL_FROM"),
