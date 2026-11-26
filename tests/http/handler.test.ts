@@ -24,7 +24,6 @@ class TestRepository implements VerifyRepository {
     const previous = [...this.challenges.values()].find((item) =>
       item.projectId === challenge.projectId &&
       item.destinationFingerprint === challenge.destinationFingerprint &&
-      item.purpose === challenge.purpose &&
       item.createdAt + 60 > timestamp
     );
     if (previous) return "cooldown";
@@ -125,6 +124,14 @@ describe("LUXORA VERIFY HTTP API", () => {
     const payload = { channel: "email", destination: "person@example.com", purpose: "sign_up" };
     expect((await post(handler, "/v1/otp/requests", payload)).status).toBe(202);
     expect((await post(handler, "/v1/otp/requests", payload)).status).toBe(429);
+  });
+
+  it("enforces resend cooldown across channels and OTP purposes", async () => {
+    const { handler } = setup();
+    const first = { channel: "email", destination: "person@example.com", purpose: "sign_up" };
+    const second = { channel: "sms", destination: "person@example.com", purpose: "password_reset" };
+    expect((await post(handler, "/v1/otp/requests", first)).status).toBe(202);
+    expect((await post(handler, "/v1/otp/requests", second)).status).toBe(429);
   });
 
   it("verifies a code once and rejects reuse", async () => {
