@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { MailQueue } from "../src/queue.js";
 import { createMailServer, type MailEnv } from "../src/server.js";
 import { parseAbuseFeedbackReport } from "../src/arf.js";
@@ -56,12 +59,14 @@ test("rejects multiple recipients, malformed addresses, and oversized reports", 
 
 test("authenticated ARF intake records a complaint, suppresses the recipient, and deduplicates replay", async () => {
   const queueKey = randomBytes(32).toString("base64");
-  const queue = new MailQueue(":memory:", queueKey);
+  const directory = mkdtempSync(join(tmpdir(), "luxora-mail-arf-"));
+  const databasePath = join(directory, "queue.sqlite");
+  const queue = new MailQueue(databasePath, queueKey);
   const token = "arf-integration-event-token-at-least-32-bytes";
   const env: MailEnv = {
     PORT: 0, INTERNAL_SERVICE_TOKEN: "arf-integration-internal-token-32-bytes",
     ADMIN_TOKEN: "arf-integration-admin-token-at-least-32-bytes",
-    EVENT_INGEST_TOKEN: token, QUEUE_DB_PATH: ":memory:", QUEUE_ENCRYPTION_KEY: queueKey,
+    EVENT_INGEST_TOKEN: token, QUEUE_DB_PATH: databasePath, QUEUE_ENCRYPTION_KEY: queueKey,
     SMTP_HOST: "127.0.0.1", SMTP_PORT: 2525, SMTP_SECURE: false, SMTP_USER: "",
     SMTP_PASSWORD: "", MAIL_FROM: "no-reply@luxora.test", MAIL_FROM_NAME: "LUXORA VERIFY",
     BOUNCE_ADDRESS: "bounces@luxora.test",
@@ -105,5 +110,6 @@ test("authenticated ARF intake records a complaint, suppresses the recipient, an
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
     queue.close();
+    rmSync(directory, { recursive: true, force: true });
   }
 });
