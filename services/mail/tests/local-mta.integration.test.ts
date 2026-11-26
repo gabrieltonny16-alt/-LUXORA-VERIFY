@@ -2,6 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer as createNetServer, type Socket } from "node:net";
 import { randomBytes } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import nodemailer from "nodemailer";
 import { MailQueue, RecipientSuppressedError } from "../src/queue.js";
 import { createMailServer, deliverOne, type MailEnv } from "../src/server.js";
@@ -98,13 +101,15 @@ function makeDsn(deliveryId: string, recipient: string): string {
 test("local SMTP submission -> RFC DSN -> authenticated endpoint -> suppression", async () => {
   const mta = await startLocalMta();
   const queueKey = randomBytes(32).toString("base64");
-  const queue = new MailQueue(":memory:", queueKey);
+  const directory = mkdtempSync(join(tmpdir(), "luxora-mail-local-mta-"));
+  const databasePath = join(directory, "queue.sqlite");
+  const queue = new MailQueue(databasePath, queueKey);
   const token = "local-integration-internal-token-32-bytes";
   const eventToken = "local-integration-event-token-32-bytes";
   const env: MailEnv = {
     PORT: 0, INTERNAL_SERVICE_TOKEN: token, EVENT_INGEST_TOKEN: eventToken,
     ADMIN_TOKEN: "local-integration-admin-token-32-bytes",
-    QUEUE_DB_PATH: ":memory:", QUEUE_ENCRYPTION_KEY: queueKey,
+    QUEUE_DB_PATH: databasePath, QUEUE_ENCRYPTION_KEY: queueKey,
     SMTP_HOST: "127.0.0.1", SMTP_PORT: mta.port, SMTP_SECURE: false,
     SMTP_USER: "", SMTP_PASSWORD: "", MAIL_FROM: "no-reply@luxora.test",
     MAIL_FROM_NAME: "LUXORA VERIFY", BOUNCE_ADDRESS: "bounces@luxora.test",
@@ -163,5 +168,6 @@ test("local SMTP submission -> RFC DSN -> authenticated endpoint -> suppression"
     await transport.close();
     await mta.close();
     queue.close();
+    rmSync(directory, { recursive: true, force: true });
   }
 });
