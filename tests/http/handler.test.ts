@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createVerifyHandler, type NewChallenge, type OtpDelivery, type StoredChallenge, type VerifyProject, type VerifyRepository } from "../../src/http/handler.js";
 import { keyedFingerprint } from "../../src/core/crypto.js";
+import { OTP_PROJECT_REQUESTS_PER_MINUTE } from "../../src/core/otp.js";
 
 const apiKey = "test-project-api-key-with-sufficient-length";
 const apiKeyPepper = "test-api-key-pepper-which-is-at-least-32-bytes";
@@ -27,6 +28,10 @@ class TestRepository implements VerifyRepository {
       item.createdAt + 60 > timestamp
     );
     if (previous) return "cooldown";
+    const projectRequests = [...this.challenges.values()].filter((item) =>
+      item.projectId === challenge.projectId && item.createdAt > timestamp - 60
+    ).length;
+    if (projectRequests >= OTP_PROJECT_REQUESTS_PER_MINUTE) return "cooldown";
     this.challenges.set(challenge.id, { ...challenge });
     return "created";
   }
@@ -132,6 +137,21 @@ describe("LUXORA VERIFY HTTP API", () => {
     const second = { channel: "email", destination: "person@example.com", purpose: "password_reset" };
     expect((await post(handler, "/v1/otp/requests", first)).status).toBe(202);
     expect((await post(handler, "/v1/otp/requests", second)).status).toBe(429);
+  });
+
+  it("limits OTP requests to 60 per project in a rolling minute", async () => {
+    const { handler, repository } = setup();
+    for (let index = 0; index < OTP_PROJECT_REQUESTS_PER_MINUTE; index += 1) {
+      const result = await post(handler, "/v1/otp/requests", {
+        channel: "email", destination: `person${index}@example.com`, purpose: "sign_up",
+      });
+      expect(result.status).toBe(202);
+    }
+    const limited = await post(handler, "/v1/otp/requests", {
+      channel: "email", destination: "person61@example.com", purpose: "sign_up",
+    });
+    expect(limited.status).toBe(429);
+    expect(repository.challenges.size).toBe(OTP_PROJECT_REQUESTS_PER_MINUTE);
   });
 
   it("verifies a code once and rejects reuse", async () => {
