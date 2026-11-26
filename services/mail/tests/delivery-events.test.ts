@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { MailQueue } from "../src/queue.js";
 import { createMailServer, type MailEnv } from "../src/server.js";
 
@@ -16,8 +19,10 @@ const env: MailEnv = {
 const payload = { destination: "person@example.com", code: "123456", purpose: "sign_up" as const };
 
 async function withServer(run: (baseUrl: string) => Promise<void>) {
-  const queue = new MailQueue(":memory:", env.QUEUE_ENCRYPTION_KEY);
-  const server = createMailServer(env, queue);
+  const directory = mkdtempSync(join(tmpdir(), "luxora-mail-events-"));
+  const databasePath = join(directory, "queue.sqlite");
+  const queue = new MailQueue(databasePath, env.QUEUE_ENCRYPTION_KEY);
+  const server = createMailServer({ ...env, QUEUE_DB_PATH: databasePath }, queue);
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Test server did not bind");
@@ -25,6 +30,7 @@ async function withServer(run: (baseUrl: string) => Promise<void>) {
   finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     queue.close();
+    rmSync(directory, { recursive: true, force: true });
   }
 }
 
