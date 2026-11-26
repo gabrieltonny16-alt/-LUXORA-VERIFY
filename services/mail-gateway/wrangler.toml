@@ -1,0 +1,8 @@
+name = "luxora-mail-gateway"
+main = "src/index.ts"
+compatibility_date = "2026-11-22"
+workers_dev = false
+preview_urls = false
+
+# This Worker has no public route or workers.dev endpoint.
+# LUXORA VERIFY reaches it only through a Cloudflare Worker service binding.
