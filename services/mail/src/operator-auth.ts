@@ -54,7 +54,6 @@ export class MailOperatorAuth {
   private readonly db: InstanceType<typeof Database>;
 
   constructor(databasePath: string) {
-    if (databasePath === ":memory:") throw new Error("Operator authentication requires the persistent queue database");
     this.db = new Database(databasePath);
     this.db.pragma("busy_timeout = 5000");
     this.db.pragma("foreign_keys = ON");
