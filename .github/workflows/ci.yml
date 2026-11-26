@@ -29,7 +29,7 @@ jobs:
       - name: Report core dependency advisories
         run: |
           npm audit --json > "$RUNNER_TEMP/core-audit.json" || true
-          node -e 'const a=require(process.env.RUNNER_TEMP + "/core-audit.json"); for (const [name,v] of Object.entries(a.vulnerabilities || {})) console.log(JSON.stringify({package:name,severity:v.severity,range:v.range,via:v.via.map(x=>typeof x === "string" ? x : {name:x.name,title:x.title,url:x.url,range:x.range})}));'
+          node -e 'const a=require(process.env.RUNNER_TEMP + "/core-audit.json"); if(a.error || !a.metadata || !a.vulnerabilities) { console.error("npm audit did not return a valid report"); process.exit(1); } for (const [name,v] of Object.entries(a.vulnerabilities)) console.error(JSON.stringify({package:name,severity:v.severity,range:v.range})); const total=a.metadata.vulnerabilities.total; if(total>0) process.exit(1); console.log("npm audit: 0 known vulnerabilities");'
       - name: Type-check core
         run: npm run typecheck
       - name: Test core
@@ -81,7 +81,7 @@ jobs:
       - name: Report mail dependency advisories
         run: |
           npm audit --json > "$RUNNER_TEMP/mail-audit.json" || true
-          node -e 'const a=require(process.env.RUNNER_TEMP + "/mail-audit.json"); for (const [name,v] of Object.entries(a.vulnerabilities || {})) console.log(JSON.stringify({package:name,severity:v.severity,range:v.range,via:v.via.map(x=>typeof x === "string" ? x : {name:x.name,title:x.title,url:x.url,range:x.range})}));'
+          node -e 'const a=require(process.env.RUNNER_TEMP + "/mail-audit.json"); if(a.error || !a.metadata || !a.vulnerabilities) { console.error("npm audit did not return a valid report"); process.exit(1); } for (const [name,v] of Object.entries(a.vulnerabilities)) console.error(JSON.stringify({package:name,severity:v.severity,range:v.range})); const total=a.metadata.vulnerabilities.total; if(total>0) process.exit(1); console.log("npm audit: 0 known vulnerabilities");'
       - name: Type-check LUXORA MAIL
         run: npm run typecheck
       - name: Test LUXORA MAIL queue, simulated SMTP and real Postfix DSN integration
