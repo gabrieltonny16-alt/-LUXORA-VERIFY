@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import nodemailer from "nodemailer";
 import { MailQueue } from "../src/queue.js";
@@ -24,13 +27,15 @@ async function waitForDsn(deliveryId: string, timeoutMs = 20_000): Promise<Buffe
 
 test("real Postfix SMTP submission -> generated RFC 3464 DSN -> LUXORA suppression", { skip: !enabled }, async () => {
   const queueKey = randomBytes(32).toString("base64");
-  const queue = new MailQueue(":memory:", queueKey);
+  const directory = mkdtempSync(join(tmpdir(), "luxora-mail-postfix-"));
+  const databasePath = join(directory, "queue.sqlite");
+  const queue = new MailQueue(databasePath, queueKey);
   const eventToken = "postfix-integration-event-token-32-bytes";
   const internalToken = "postfix-integration-internal-token-32-bytes";
   const env: MailEnv = {
     PORT: 0, INTERNAL_SERVICE_TOKEN: internalToken, EVENT_INGEST_TOKEN: eventToken,
     ADMIN_TOKEN: "z".repeat(40),
-    QUEUE_DB_PATH: ":memory:", QUEUE_ENCRYPTION_KEY: queueKey,
+    QUEUE_DB_PATH: databasePath, QUEUE_ENCRYPTION_KEY: queueKey,
     SMTP_HOST: "127.0.0.1", SMTP_PORT: 25, SMTP_SECURE: false,
     SMTP_USER: "", SMTP_PASSWORD: "", MAIL_FROM: "verify@luxora.test",
     MAIL_FROM_NAME: "LUXORA VERIFY", BOUNCE_ADDRESS: "bounces@luxora.test",
@@ -78,5 +83,6 @@ test("real Postfix SMTP submission -> generated RFC 3464 DSN -> LUXORA suppressi
     await new Promise<void>(resolve => api.close(() => resolve()));
     transport.close();
     queue.close();
+    rmSync(directory, { recursive: true, force: true });
   }
 });
