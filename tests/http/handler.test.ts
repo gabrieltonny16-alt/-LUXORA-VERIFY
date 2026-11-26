@@ -129,7 +129,7 @@ describe("LUXORA VERIFY HTTP API", () => {
   it("enforces resend cooldown across channels and OTP purposes", async () => {
     const { handler } = setup();
     const first = { channel: "email", destination: "person@example.com", purpose: "sign_up" };
-    const second = { channel: "sms", destination: "person@example.com", purpose: "password_reset" };
+    const second = { channel: "email", destination: "person@example.com", purpose: "password_reset" };
     expect((await post(handler, "/v1/otp/requests", first)).status).toBe(202);
     expect((await post(handler, "/v1/otp/requests", second)).status).toBe(429);
   });
