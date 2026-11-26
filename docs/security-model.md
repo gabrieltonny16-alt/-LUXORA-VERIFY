@@ -8,7 +8,7 @@
 - Initial code length: 6 decimal digits.
 - Initial verification budget: 5 attempts per challenge.
 - Initial resend cooldown: 60 seconds.
-- Apply rate limits across project, destination, IP/risk signal, and time window before delivery.
+- Enforce an atomic project-wide ceiling of 60 OTP requests per rolling minute and a 60-second per-destination/per-channel resend cooldown across purposes before delivery. Add edge/IP and risk-signal limits before production exposure.
 - Return generic public errors where detailed responses would reveal whether an account or destination exists.
 - Never log OTP values, full destinations, API credentials, HMAC digests, or provider secrets.
 - Do not expose an OTP through API responses, browser state, analytics, or error messages.
