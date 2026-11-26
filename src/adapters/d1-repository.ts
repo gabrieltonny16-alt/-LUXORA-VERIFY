@@ -1,3 +1,4 @@
+import { OTP_PROJECT_REQUESTS_PER_MINUTE } from "../core/otp.js";
 import type { NewChallenge, OtpChannel, StoredChallenge, VerifyProject, VerifyRepository } from "../http/handler.js";
 
 interface D1Result {
@@ -103,7 +104,11 @@ export class D1VerifyRepository implements VerifyRepository {
          WHERE project_id = ?
            AND destination_fingerprint = ?
            AND resend_after > ?
-       )`,
+       )
+       AND (
+         SELECT COUNT(*) FROM otp_challenges
+         WHERE project_id = ? AND created_at > ?
+       ) < ?`,
     ).bind(
       challenge.id,
       challenge.projectId,
@@ -122,6 +127,9 @@ export class D1VerifyRepository implements VerifyRepository {
       challenge.projectId,
       challenge.destinationFingerprint,
       now,
+      challenge.projectId,
+      now - 60,
+      OTP_PROJECT_REQUESTS_PER_MINUTE,
     ).run();
 
     return (result.meta?.changes ?? 0) === 1 ? "created" : "cooldown";
