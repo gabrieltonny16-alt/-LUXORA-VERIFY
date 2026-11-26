@@ -102,7 +102,6 @@ export class D1VerifyRepository implements VerifyRepository {
          SELECT 1 FROM otp_challenges
          WHERE project_id = ?
            AND destination_fingerprint = ?
-           AND purpose = ?
            AND resend_after > ?
        )`,
     ).bind(
@@ -122,7 +121,6 @@ export class D1VerifyRepository implements VerifyRepository {
       challenge.projectId,
       challenge.projectId,
       challenge.destinationFingerprint,
-      challenge.purpose,
       now,
     ).run();
 
