@@ -58,7 +58,7 @@ routing or delivery to external inboxes.
 - LUXORA SMS gateway and transport adapters are not implemented. Authorized telecom
   interconnection for real SMS does not exist.
 - Production Worker secrets, DNS, private networking, remote D1, and deployments are not provisioned.
-- Project provisioning, API-key issuance/revocation, and global/project rate limits remain required.
+- Project provisioning and API-key issuance/revocation remain required. A baseline project-wide OTP request ceiling and per-destination cooldown are implemented; edge/IP and risk-signal rate limits, configurable quotas, and production monitoring remain required.
 
 ## Next engineering gates
 1. Add end-to-end queue-state reconciliation so delivery outcomes can be surfaced consistently across services.
