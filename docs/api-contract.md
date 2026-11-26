@@ -33,6 +33,8 @@ Success (202):
 
 The response never contains the OTP or a provider credential.
 
+Initial throttling defaults: 60 OTP requests per project per rolling minute, plus a 60-second resend cooldown for the same destination and channel across OTP purposes. A throttled request returns `429` with `try_again_later`. Edge/IP and risk-signal limits are additional production requirements.
+
 ## Verify an OTP
 
 `POST /v1/otp/verifications`
