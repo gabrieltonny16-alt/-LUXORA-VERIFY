@@ -20,6 +20,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Update npm for Vitest 4 peer resolution
+        run: |
+          npm install --global npm@11.6.0
+          npm --version
       - name: Install core dependencies
         run: npm install
       - name: Report core dependency advisories
